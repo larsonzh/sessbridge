@@ -38,7 +38,6 @@ jobs:
         run: |
           pip install --no-deps .
           sessbridge --help
-          sessbridge send --message smoke --timeout 1 >/dev/null 2>&1 || true
           python -c "import sessbridge"
 
       - name: Shellcheck (POSIX scripts)

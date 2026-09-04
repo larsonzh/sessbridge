@@ -7,7 +7,7 @@
 
 ```
 sessbridge/
-  .github/workflows/   CI（三平台契约测试 + 静态门禁 + vsix 打包）
+  .github/workflows/   CI（三平台契约测试 + 静态门禁 + runtime smoke + 发布物）
   extension/          VS Code 扩展（visible/silent/auto、多实例路由、旧协议兼容、S0 能力探针）
   client/
     sessbridge.py     Python 3 跨平台 CLI（send/wait/reply/discover）
@@ -22,6 +22,8 @@ sessbridge/
   tests/
     golden/           黄金样例（命令/回执/错误码/多实例/优先级/超时）
     test_contract.py  契约测试（mock 扩展 + 真实客户端）
+    run-runtime-smoke.js  真实 VS Code Extension Host smoke 启动器
+    runtime-smoke/    Extension Host 激活与文件 IPC smoke
   docs/
     RFC-sessbridge-channel-protocol-v1.md   协议（权威）
     DEV_PLAN.md                             本文件
@@ -87,7 +89,8 @@ sessbridge/
 - [x] tests/（黄金样例 + 契约测试，21 项全过）
 - [x] M3 发布准备：CI（`.github/workflows/ci.yml` 三平台矩阵）+ vsix 打包脚本 + SHA256 清单工具 + 编码门禁（含 golden）
 - [x] Python 客户端包（`pyproject.toml` → `sessbridge` 命令；wheel 构建验证通过；CI 含 pip 安装冒烟）
-- [ ] S0 能力探针运行 + 能力矩阵填写（需在真实 VS Code 中执行）
+- [x] S0 能力探针运行 + 能力矩阵填写（真实 VS Code 1.136.1 已验证）
+- [x] 真实 VS Code runtime smoke（Extension Host 激活 + PID 文件 IPC；CI 独立 job）
 - [ ] whois 旧客户端兼容回归（需真实 VS Code 环境）
 - [ ] M2 会话回合（待 S0 结论）
 - [ ] M3 正式发布（vsix + 客户端包 + SHA256 + 兼容矩阵 + CI 徽章；需 S0/M2 后）

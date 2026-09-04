@@ -2,6 +2,7 @@
 out/
 dist/
 *.vsix
+.vscode-test/
 
 # Python
 __pycache__/

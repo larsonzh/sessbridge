@@ -24,7 +24,7 @@ EXCEPTIONS_NO_BOM = {
 }
 
 BOM_EXTS = {'.md', '.ps1', '.json'}
-SKIP_DIRS = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'out', 'dist', 'tmp'}
+SKIP_DIRS = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'out', 'dist', 'tmp', '.vscode-test'}
 
 
 def iter_files(root):

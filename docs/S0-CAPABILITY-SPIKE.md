@@ -24,6 +24,31 @@
    Get-Content "$d\diag_$(Get-Process Code | Where-Object MainWindowTitle | Select-Object -First 1 -ExpandProperty Id).json"
    ```
 
+## 2.1 真实 VS Code runtime smoke（CI）
+
+该 smoke 使用 `@vscode/test-electron@3.1.0` 启动隔离的 VS Code Extension Host，
+不依赖 Copilot 登录或具体 LM 提供方。测试会激活 `larsonzh.sessbridge`，读取真实
+`diag_<pid>.json`，再通过真实 PID-scoped 文件通道发送空消息并校验
+`status: "no_message"` 回执。
+
+本地 Windows（需要 Node.js 22、桌面 VS Code 下载网络）运行：
+
+```powershell
+npm install --no-save --no-package-lock @vscode/test-electron@3.1.0
+node tests\run-runtime-smoke.js
+```
+
+本地 Linux（需要 Node.js 22、xvfb、网络）运行：
+
+```sh
+npm install --no-save --no-package-lock @vscode/test-electron@3.1.0
+xvfb-run -a node tests/run-runtime-smoke.js
+```
+
+CI 对应 job 使用 VS Code `1.136.1`；下载缓存目录 `.vscode-test/` 已加入忽略清单。
+2026-09-04 本机 Windows 实测 PASS：Extension Host 退出码 `0`，扩展版本 `0.1.0`，
+真实回执 `status: "no_message"`，PID 路由校验通过。
+
 ## 3. 验证结果（真实 VS Code 实机）
 
 | # | 验证项 | 方法 | 结论字段 |

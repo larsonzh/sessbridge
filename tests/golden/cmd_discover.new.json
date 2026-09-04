@@ -1,0 +1,12 @@
+﻿{
+  "schemaVersion": "1",
+  "requestId": "sess-0123456789abcdef0123456789abcdef",
+  "mode": "visible",
+  "priority": "normal",
+  "message": "",
+  "targetPid": 424242,
+  "timeoutMs": 30000,
+  "createdAt": "2026-09-04T00:00:00Z",
+  "legacy": false,
+  "discover": true
+}

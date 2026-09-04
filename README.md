@@ -30,13 +30,33 @@ SessionBridge 是一个独立开源产品：让外部脚本、无人值守任务
   npm 404，全部未占用；语义贴合“会话级双向交互”。
 - **简称纪律**：不用 `sb`（中文互联网语境存在不雅联想）；内部建议 `sess` 或 `sbr`。
 
-## 仓库结构（计划）
+## 仓库结构
 
 ```
-extension/   VS Code 扩展（visible/silent/auto、多实例路由、会话回合、旧协议兼容模式）
+extension/   VS Code 扩展（visible/silent/auto、多实例路由、S0 能力探针、旧协议兼容模式）
 client/      Python 3 跨平台客户端（sessbridge send/wait/reply/discover）；PowerShell 兼容层
 installer/   安装/更新/卸载脚本与 vsix 打包
-docs/        通道协议 v1 规范、兼容矩阵、能力矩阵
+tests/       契约测试 + 黄金样例（命令/回执/错误码/多实例/优先级/超时）
+docs/        通道协议 v1 规范、开发计划、S0 能力验证清单、能力矩阵
+```
+
+## 快速开始（M1）
+
+```powershell
+# 1. 安装扩展（需要重载窗口）
+powershell -File installer\install.ps1 -Force
+
+# 2. 投递消息（默认 visible：聊天面板可见）
+python client\sessbridge.py send --message "hello"
+
+# 3. 静默直达 LM，捕获 AI 响应
+python client\sessbridge.py send --message "status" --mode silent --model "DeepSeek V4 Flash"
+
+# 4. PowerShell 兼容层
+.\client\ps\Send-IpcChatMessage.ps1 -Message "hello"
+
+# 5. 契约测试
+python tests\test_contract.py
 ```
 
 ## 协议
@@ -45,6 +65,21 @@ docs/        通道协议 v1 规范、兼容矩阵、能力矩阵
 
 边界说明：ProofRail（证轨）正式协议仅消费 `silent` 通道与文件队列；`visible` 人工交互属于
 SessionBridge 产品能力，不进入 ProofRail 正式协议。
+
+## 文档导航
+
+- 完整指南：[docs/SESSBRIDGE_README.md](docs/SESSBRIDGE_README.md)
+- 快速排障：[docs/SESSBRIDGE_TROUBLESHOOTING_CN.md](docs/SESSBRIDGE_TROUBLESHOOTING_CN.md)
+- 编码与工程规范：[docs/CODING_CONVENTIONS.md](docs/CODING_CONVENTIONS.md)
+- 开发计划 / S0 能力验证 / 能力矩阵：`docs/DEV_PLAN.md`、`docs/S0-CAPABILITY-SPIKE.md`、`docs/capability-matrix.md`
+
+## 编码规范（硬规则）
+
+按 [docs/CODING_CONVENTIONS.md](docs/CODING_CONVENTIONS.md)：
+
+- `.md` / `.ps1` / `.json`：UTF-8 **with BOM** + **LF**（`extension/package.json` 例外：无 BOM + LF）。
+- 其它文件：UTF-8 **without BOM** + **LF**。
+- 门禁：`python tools\enforce_encoding.py`（`--fix` 仅做编码/EOL 转换）。
 
 ## 许可证
 

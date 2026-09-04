@@ -1,0 +1,22 @@
+{
+  "name": "sessbridge",
+  "displayName": "SessionBridge (会话桥)",
+  "description": "Two-way session bridge between VS Code Copilot Chat and external automation (visible/silent/auto, multi-instance routing, legacy IPC compat).",
+  "version": "0.1.0",
+  "publisher": "larsonzh",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/larsonzh/sessbridge.git"
+  }
+}

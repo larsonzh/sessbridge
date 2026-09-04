@@ -7,13 +7,18 @@
 
 ```
 sessbridge/
+  .github/workflows/   CI（三平台契约测试 + 静态门禁 + vsix 打包）
   extension/          VS Code 扩展（visible/silent/auto、多实例路由、旧协议兼容、S0 能力探针）
   client/
     sessbridge.py     Python 3 跨平台 CLI（send/wait/reply/discover）
     ps/
       Send-IpcChatMessage.ps1   PowerShell 兼容层（Windows；与 Python 契约一致）
   installer/
-    install.ps1 / uninstall.ps1 / build-vsix.ps1
+    install.ps1 / install.sh / uninstall*.ps1 / uninstall*.sh
+    build-vsix.ps1 / build-vsix.sh      vsix 打包（vsce）
+  tools/
+    enforce_encoding.py                 编码/行尾门禁
+    make_checksums.ps1 / make_checksums.sh  发布物 SHA256 清单
   tests/
     golden/           黄金样例（命令/回执/错误码/多实例/优先级/超时）
     test_contract.py  契约测试（mock 扩展 + 真实客户端）
@@ -78,8 +83,10 @@ sessbridge/
 - [x] 本项目仓库布局 + 开发计划
 - [x] extension/（M1 + S0 探针）
 - [x] client/（Python CLI + PS 兼容层）
-- [x] installer/（install / uninstall / uninstall-legacy）
-- [x] tests/（黄金样例 + 契约测试，12 项全过）
+- [x] installer/（install/uninstall PS1+SH、build-vsix PS1+SH、legacy 清理）
+- [x] tests/（黄金样例 + 契约测试，21 项全过）
+- [x] M3 发布准备：CI（`.github/workflows/ci.yml` 三平台矩阵）+ vsix 打包脚本 + SHA256 清单工具 + 编码门禁（含 golden）
 - [ ] S0 能力探针运行 + 能力矩阵填写（需在真实 VS Code 中执行）
 - [ ] whois 旧客户端兼容回归（需真实 VS Code 环境）
 - [ ] M2 会话回合（待 S0 结论）
+- [ ] M3 正式发布（vsix + 客户端包 + SHA256 + 兼容矩阵 + CI 徽章；需 S0/M2 后）

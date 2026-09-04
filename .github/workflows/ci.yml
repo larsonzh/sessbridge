@@ -1,0 +1,78 @@
+# SessionBridge CI — 跨平台契约测试 + 静态门禁 + vsix 打包
+#
+# 触发：push/PR 到 main。gate：契约测试、编码门禁、JS/PS/SH 语法、
+# shellcheck（POSIX）、vsix 可打包性（含 golden 回归即测试本身）。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Contract tests (golden + clients, incl. PowerShell parity on Windows)
+        run: python tests/test_contract.py
+
+      - name: Encoding gate
+        run: python tools/enforce_encoding.py
+
+      - name: JS syntax check
+        run: node --check extension/extension.js
+
+      - name: Shellcheck (POSIX scripts)
+        if: runner.os != 'Windows'
+        run: |
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck installer/*.sh tools/*.sh
+          else
+            echo "::warning::shellcheck not available on this runner; skipping"
+          fi
+
+      - name: PowerShell parse check
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'client/ps/Send-IpcChatMessage.ps1'), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { $_.Message }; exit 1 }
+
+  vsix:
+    name: Build vsix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Package extension (.vsix)
+        run: |
+          npm install --no-save @vscode/vsce
+          pushd extension
+          npx --yes vsce package --skip-license --out ../dist/sessbridge.vsix
+          popd
+          ls -la dist/
+
+      - name: Upload vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessbridge-vsix
+          path: dist/sessbridge.vsix
+          if-no-files-found: error

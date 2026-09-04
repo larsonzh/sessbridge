@@ -305,12 +305,34 @@ async function sendViaLmApi(cmd, resPath, legacy) {
     }
     if (!allModels || allModels.length === 0) { return false; }
 
+    // Copilot registers internal "utility" proxies (id/family
+    // `copilot-utility*`) that can share a display name with a real
+    // third-party model (e.g. "DeepSeek V4 Flash Vision Exp" appears both
+    // as vendor=copilot/id=copilot-utility-small and as
+    // vendor=deepseek/id=deepseek-v4-flash-vision-exp).  A naive first-name
+    // match would pick the proxy (which returns an empty stream), so skip
+    // those entries when the caller gave an explicit model name.
+    const isUtilityProxy = (m) => {
+      const id = String(m.id || '');
+      const family = String(m.family || '');
+      return id.startsWith('copilot-utility') || family.startsWith('copilot-utility');
+    };
     const pickModel = (models, preferred) => {
       if (preferred) {
-        const pref = models.find(m =>
-          String(m.name || '').toLowerCase() === preferred ||
+        // 1) Exact ID match first (caller may pass an id like
+        //    `deepseek-v4-flash-vision-exp`).
+        const byId = models.find(m =>
           String(m.id || '').toLowerCase() === preferred);
-        if (pref) { return pref; }
+        if (byId) { return byId; }
+        // 2) Name match: prefer the first real (non-utility-proxy) entry;
+        //    fall back to any name match only if every match is a proxy.
+        const byName = models.filter(m =>
+          String(m.name || '').toLowerCase() === preferred);
+        if (byName.length > 0) {
+          const real = byName.find(m => !isUtilityProxy(m));
+          if (real) { return real; }
+          return byName[0];
+        }
       }
       const auto = models.find(m => m.id === 'auto' || m.name === 'Auto');
       if (auto) { return auto; }

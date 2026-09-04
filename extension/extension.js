@@ -442,9 +442,10 @@ async function sendViaClipboard(cmd, resPath, legacy) {
     await runPanelCommand('focusInput');
     await new Promise(r => setTimeout(r, PASTE_DELAY_MS));
     await runPanelCommand('paste');
-    // Restore the caller's original clipboard as soon as the paste has
-    // consumed our message — minimizes the window it stays overwritten.
-    await restoreClipboard();
+    // Give the (asynchronous) paste command time to consume the clipboard
+    // BEFORE restoring the caller's original content.  Restoring earlier
+    // races the paste read and can deliver the user's previous clipboard
+    // text to the chat input instead of cmd.message.
     await new Promise(r => setTimeout(r, SUBMIT_DELAY_MS));
 
     if (cmd.priority === 'normal') {
@@ -452,6 +453,9 @@ async function sendViaClipboard(cmd, resPath, legacy) {
     } else {
       await runPanelCommand('submit');
     }
+
+    // The paste/submit no longer read the clipboard — safe to restore now.
+    await restoreClipboard();
 
     // M1: visible receipt returns immediately; humanReply capture is M2 (S0 decides).
     if (legacy) {

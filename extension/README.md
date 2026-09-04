@@ -19,6 +19,8 @@
 
 安装：仓库根目录执行 `powershell -File installer\install.ps1 -Force`。
 
+> VSIX 扩展和客户端脚本当前请到 GitHub 仓库获取：https://github.com/larsonzh/sessbridge
+
 ## English
 
 File-based two-way IPC to Copilot Chat.  See
@@ -35,3 +37,5 @@ File-based two-way IPC to Copilot Chat.  See
   new tools plug in through `TOOL_ADAPTERS` — client and protocol unchanged.
 
 Install: `powershell -File installer\install.ps1 -Force` from repo root.
+
+> For now, get the VSIX extension and client scripts from the GitHub repo: https://github.com/larsonzh/sessbridge

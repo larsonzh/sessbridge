@@ -24,6 +24,8 @@ EXCEPTIONS_NO_BOM = {
 }
 
 BOM_EXTS = {'.md', '.ps1', '.json'}
+# Binary files are not subject to encoding/EOL rules (icon.png, fonts, etc.)
+BINARY_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.otf', '.wasm', '.vsix'}
 SKIP_DIRS = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'out', 'dist', 'tmp', '.vscode-test'}
 
 
@@ -45,6 +47,8 @@ def scan(root):
     """Return list of (relpath, current_state, want_state, detail)."""
     problems = []
     for p in iter_files(root):
+        if os.path.splitext(p)[1].lower() in BINARY_EXTS:
+            continue
         try:
             with open(p, 'rb') as fh:
                 raw = fh.read()

@@ -1,0 +1,21 @@
+# Build outputs
+out/
+dist/
+*.vsix
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Local state (channel files, logs, test fixtures)
+tmp/
+*.log

@@ -24,8 +24,9 @@
    默认都是 `%TEMP%\sessbridge`，**绝不允许**一边默认一边自定义。
 4. 检查目标 PID：集成终端用 `$env:VSCODE_PID`；外部终端需 `--target-pid` 或自动探测；
    无法探测时回退旧共享文件（legacy）。
-5. 仍失败：重装扩展 `installer\install.ps1 -Force` 并重载。
+5. 仍失败：重装扩展（Windows `installer\\install.ps1 -Force`；Linux/macOS `sh installer/install.sh --force`）并重载。
 6. 查看 `%TEMP%\sessbridge\diag_<pid>.json` 是否 `extension_activated`。
+   （POSIX 通道目录默认 `$TMPDIR/sessbridge`。）
 
 ### B. 通道目录不一致（新旧混用）
 

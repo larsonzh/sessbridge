@@ -35,7 +35,9 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 | `extension/package.json` / `extension.js` | VS Code 扩展清单与逻辑（聊天工具适配器） |
 | `client/sessbridge.py` | **主实现**：Python 3 CLI（send/wait/reply/discover） |
 | `client/ps/Send-IpcChatMessage.ps1` | PowerShell 兼容层（Windows，契约与 Python 一致） |
-| `installer/install.ps1` / `uninstall.ps1` | 一键安装/卸载扩展 |
+| `installer/install.ps1` / `uninstall.ps1` | Windows 一键安装/卸载扩展 |
+| `installer/install.sh` / `uninstall.sh` | Linux/macOS（POSIX）安装/卸载扩展 |
+| `installer/uninstall-legacy.ps1` / `.sh` | 移除旧 whois `vscode-chat-sender`（防双装冲突） |
 | `tests/golden/*.json` + `tests/test_contract.py` | 黄金样例 + 契约测试 |
 | `tools/enforce_encoding.py` | 编码/行尾规范门禁 |
 
@@ -46,7 +48,7 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 - VS Code >= 1.82
 - GitHub Copilot 扩展（或经 `SESSBRIDGE_CHAT_TOOL` 适配的其它聊天工具）
 
-### 步骤
+### Windows
 
 ```powershell
 # 1. 安装扩展到 VS Code
@@ -56,6 +58,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "installer/install.ps1" -For
 ```
 
 扩展代码修改后重新执行安装脚本并重载窗口即可。
+
+### Linux / macOS（POSIX）
+
+```sh
+# 1. 安装扩展到 VS Code（默认 ~/.vscode/extensions）
+sh installer/install.sh
+
+# 自定义扩展目录（VSCodium / Cursor / 便携版等）
+sh installer/install.sh --dir ~/.vscode-oss/extensions
+VSCODE_EXTENSIONS_DIR=~/.cursor/extensions sh installer/install.sh
+
+# 强制覆盖重装
+sh installer/install.sh --force
+
+# 2. 重载 VS Code：命令面板（Ctrl+Shift+P）→ Developer: Reload Window，或退出重开
+#    （Linux 部分发行版也可用 xdg 快捷方式/重启窗口）
+
+# 验证
+code --list-extensions | grep -i sessbridge
+
+# 卸载 / 移除旧 whois 扩展（防双装冲突）
+sh installer/uninstall.sh [--dir <extensions-dir>]
+sh installer/uninstall-legacy.sh
+```
+
+> PS1 与 SH 行为一致（`--force`/`--dir`；`VSCODE_EXTENSIONS_DIR` 对应 Windows 的
+> `$env:USERPROFILE\.vscode\extensions` 固定路径，由 `.ps1` 内部处理）。
 
 ## 使用方法
 

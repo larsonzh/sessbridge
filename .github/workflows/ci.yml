@@ -65,9 +65,9 @@ jobs:
       - name: Package extension (.vsix)
         run: |
           npm install --no-save @vscode/vsce
-          pushd extension
-          npx --yes vsce package --skip-license --out ../dist/sessbridge.vsix
-          popd
+          # vsce does NOT create the output directory — create dist/ first.
+          mkdir -p dist
+          (cd extension && npx --yes vsce package --skip-license --out ../dist/sessbridge.vsix)
           ls -la dist/
 
       - name: Upload vsix artifact

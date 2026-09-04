@@ -1,0 +1,3 @@
+# Only these files ship in the .vsix:
+#   extension.js, package.json, README.md
+# (blank lines and comments are ignored by vsce)

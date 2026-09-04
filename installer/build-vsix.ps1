@@ -9,7 +9,8 @@
 #>
 
 param(
-    [switch]$NoFetch
+    [switch]$NoFetch,
+    [string]$VsceVersion = '3.9.2'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,6 +19,7 @@ $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $extDir = Join-Path $repoRoot 'extension'
 $distDir = Join-Path $repoRoot 'dist'
 $pkgPath = Join-Path $extDir 'package.json'
+$vscePackage = "@vscode/vsce@$VsceVersion"
 
 if (-not (Test-Path -LiteralPath $pkgPath)) {
     throw "package.json missing in $extDir"
@@ -29,13 +31,18 @@ $out = Join-Path $distDir ("sessbridge-{0}.vsix" -f $pkg.version)
 
 if (-not $NoFetch.IsPresent) {
     # Prime the npx cache so the actual package step is deterministic.
-    npx --yes @vscode/vsce --version | Out-Null
+    npx --yes $vscePackage --version | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "npx @vscode/vsce unavailable — install Node.js or pass -NoFetch with a pre-installed vsce." }
 }
 
 Push-Location $extDir
 try {
-    npx --yes @vscode/vsce package --skip-license --out $out
+    $packageArgs = @('package', '--skip-license', '--out', $out)
+    if ($NoFetch.IsPresent) {
+        & vsce @packageArgs
+    } else {
+        & npx --yes $vscePackage @packageArgs
+    }
     if ($LASTEXITCODE -ne 0) { throw "vsce package failed (exit $LASTEXITCODE)" }
 } finally {
     Pop-Location

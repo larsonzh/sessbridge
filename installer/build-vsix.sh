@@ -12,6 +12,7 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 EXT_DIR="$REPO_ROOT/extension"
 DIST_DIR="$REPO_ROOT/dist"
 PKG_PATH="$EXT_DIR/package.json"
+VSCE_VERSION="${VSCE_VERSION:-3.9.2}"
 
 if [ ! -f "$PKG_PATH" ]; then
     echo "package.json missing in $EXT_DIR" >&2
@@ -32,14 +33,14 @@ if ! command -v npx >/dev/null 2>&1; then
     exit 1
 fi
 
-npx --yes @vscode/vsce --version >/dev/null 2>&1 || {
+npx --yes "@vscode/vsce@$VSCE_VERSION" --version >/dev/null 2>&1 || {
     echo "Cannot fetch @vscode/vsce via npx (network?). Install vsce manually." >&2
     exit 1
 }
 
 # shellcheck disable=SC2164
 cd "$EXT_DIR" || exit 1
-npx --yes @vscode/vsce package --skip-license --out "$OUT" || exit 1
+npx --yes "@vscode/vsce@$VSCE_VERSION" package --skip-license --out "$OUT" || exit 1
 cd "$REPO_ROOT" || exit 1
 
 echo "Built: $OUT"

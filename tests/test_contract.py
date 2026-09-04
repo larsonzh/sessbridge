@@ -423,6 +423,20 @@ class PowerShellParityTestCase(unittest.TestCase):
 
     PS_EXE = shutil.which('pwsh') or shutil.which('powershell.exe') or shutil.which('powershell')
     PS_SCRIPT = os.path.join(ROOT, 'client', 'ps', 'Send-IpcChatMessage.ps1')
+    PS_STARTUP_TIMEOUT = 120
+    PS_SUBPROCESS_TIMEOUT = 180
+    PS_MOCK_TIMEOUT = PS_SUBPROCESS_TIMEOUT + 60
+
+    @classmethod
+    def setUpClass(cls):
+        """Warm up PowerShell once before starting the receiver windows."""
+        if not cls.PS_EXE:
+            return
+        proc = subprocess.run(
+            [cls.PS_EXE, '-NoProfile', '-Command', 'exit 0'],
+            timeout=cls.PS_STARTUP_TIMEOUT, check=False)
+        if proc.returncode != 0:
+            raise RuntimeError('PowerShell warm-up failed with exit code %d' % proc.returncode)
 
     def setUp(self):
         if not self.PS_EXE:
@@ -443,11 +457,13 @@ class PowerShellParityTestCase(unittest.TestCase):
         cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
         res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
         snap = []
-        # Windows PowerShell 5.1 cold-start can take longer than the default
-        # mock window (assembly load, execution-policy checks) — give it room.
-        mock = MockReceiver(cmd_file, res_file, ok_visible, snap, timeout=20.0)
+        # PowerShell cold-start can take longer than the default mock window
+        # (assembly load, execution-policy checks — worst on Linux runners)
+        # so give the mock receiver and the subprocess ample headroom.
+        mock = MockReceiver(cmd_file, res_file, ok_visible, snap, timeout=self.PS_MOCK_TIMEOUT)
         mock.start()
-        proc = self.run_ps(['-Message', 'ps parity check', '-TimeoutSec', '15'], timeout=25)
+        proc = self.run_ps(['-Message', 'ps parity check', '-TimeoutSec', '15'],
+                   timeout=self.PS_SUBPROCESS_TIMEOUT)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(len(snap), 1)
         self.assertEqual(snap[0]['message'], 'ps parity check')
@@ -458,9 +474,10 @@ class PowerShellParityTestCase(unittest.TestCase):
         cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
         res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
         snap = []
-        mock = MockReceiver(cmd_file, res_file, ok_visible, snap, timeout=20.0)
+        mock = MockReceiver(cmd_file, res_file, ok_visible, snap, timeout=self.PS_MOCK_TIMEOUT)
         mock.start()
-        proc = self.run_ps(['-Message', 'turn zero', '-TurnId', '0', '-TimeoutSec', '15'], timeout=25)
+        proc = self.run_ps(['-Message', 'turn zero', '-TurnId', '0', '-TimeoutSec', '15'],
+                   timeout=self.PS_SUBPROCESS_TIMEOUT)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(len(snap), 1)
         self.assertIn('turnId', snap[0])

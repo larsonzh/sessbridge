@@ -367,6 +367,7 @@ def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument('--request-id', default='', help='Receipt binding id (auto: sess-<uuid>)')
     common.add_argument('--target-pid', type=int, default=0, help='Target VS Code main-window PID (0 = auto)')
+    common.add_argument('--channel-dir', default='', help='Override channel directory (default: SESSBRIDGE_CHANNEL_DIR or %TEMP%\\sessbridge)')
     common.add_argument('--timeout', type=int, default=30, help='Seconds to wait for receipt (default 30)')
     common.add_argument('--poll-interval', type=int, default=200, help='Poll interval ms (default 200)')
     common.add_argument('--json-output', action='store_true', help='Print receipt as JSON')
@@ -410,6 +411,11 @@ def main(argv=None) -> int:
     cmd = args.command
     discover = cmd == 'discover'
     legacy = args.legacy or os.environ.get('SESSBRIDGE_LEGACY', '').strip().lower() in ('1', 'true', 'yes')
+
+    # --channel-dir parity with PowerShell's -ChannelDir: applies for the
+    # whole process (channel_dir()/get_file_paths read the env var).
+    if args.channel_dir:
+        os.environ['SESSBRIDGE_CHANNEL_DIR'] = args.channel_dir
 
     if cmd == 'send':
         message = args.message.strip()

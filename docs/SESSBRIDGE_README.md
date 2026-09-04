@@ -61,6 +61,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "installer/install.ps1" -For
 
 ### Python（主实现）
 
+子命令：`send` / `wait` / `reply` / `discover`。
+
+通用参数（各子命令均支持）：
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--message` | 消息文本（`send`/`reply` 必填） | — |
+| `--request-id` | 回执绑定 ID（自动 `sess-<uuid>`；重试复用同 ID 幂等） | 自动 |
+| `--target-pid` | 目标 VS Code 主窗口 PID（0=自动探测） | 0 |
+| `--channel-dir` | 通道目录覆盖（与 PS `-ChannelDir` 对齐） | 环境变量或 `%TEMP%\sessbridge` |
+| `--timeout` | 等待回执秒数 | 30 |
+| `--poll-interval` | 轮询间隔毫秒 | 200 |
+| `--json-output` | 输出 JSON 回执（供脚本解析） | 关 |
+| `--keep` | 读取回执后保留文件（事后分析/审计） | 关 |
+| `--legacy` | 旧协议（whois 文件名/载荷，供 whois 过渡） | 关 |
+| `--mode` | `visible` / `silent` / `auto` | visible |
+| `--priority` | `normal`（排队）/ `high`（打断） | normal |
+| `--auto-escalate` | normal 超时自动转 high 重试 | 关 |
+| `--model` | 指定 LM 模型名称/ID（silent/auto） | 空（自动选择） |
+| `--model-options` | JSON 模型选项（如 `{"thinking_mode":"deep"}`） | 无 |
+| `--lm-response-timeout-ms` | 按请求覆盖扩展侧 LM 等待（1000–3600000） | 0（用扩展默认） |
+| `--conversation-id` | 会话上下文 ID（`reply` 必填；`send` 透传） | 空 |
+| `--turn-id` | 回合号（0=新回合） | 无（透传） |
+
+`wait` 额外支持 `--res-file <path>`（显式指定回执文件，高级）；`discover` 无需 `--message`。
+
 ```powershell
 # 最基本用法（visible：聊天面板可见）
 python client\sessbridge.py send --message "你的消息"
@@ -99,9 +125,57 @@ python client\sessbridge.py discover
 
 # 旧协议兼容（whois 文件名/载荷，供 whois 流程过渡）
 python client\sessbridge.py send --message "hello" --legacy
+
+# 自定义超时/轮询（快速冒烟 / 慢速长任务）
+python client\sessbridge.py send --message "test" --timeout 10 --poll-interval 100
+python client\sessbridge.py send --message "慢查询" --timeout 120
+
+# 固定 request-id + 指定实例 + JSON（无人值守脚本）
+python client\sessbridge.py send --message "状态" --request-id msg001 --target-pid 6288 --json-output
+
+# 自定义通道目录（与 PS -ChannelDir 对齐）
+python client\sessbridge.py send --message "x" --channel-dir "D:\temp\sb" --json-output
+
+# 保留回执文件（事后分析）
+python client\sessbridge.py send --message "test" --keep --json-output
+
+# 模型选项（键取决于具体模型，如 DeepSeek thinking_mode）
+python client\sessbridge.py send --message "x" --mode silent --model "DeepSeek V4 Flash" \
+  --model-options '{"thinking_mode":"deep"}'
+
+# 等待既有回执（另一进程已发出，这里读取；可指定文件）
+python client\sessbridge.py wait --request-id msg001 --keep
+python client\sessbridge.py wait --conversation-id conv-x --res-file "D:\tmp\res_4242.json"
+
+# 带回合号继续会话（M2 语义，v1 透传）
+python client\sessbridge.py reply --message "继续" --conversation-id conv-x --turn-id 1
 ```
 
 ### PowerShell（兼容层，Windows）
+
+参数集为 whois `Send-IpcChatMessage.ps1` 的**全集超集**（whois 参数全部保留，并新增
+`ChannelDir` / `Legacy` / `ConversationId` / `TurnId`）：
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `-Message` | 消息文本（Send 集合必填；`-DiscoverModels` 时无需） | — |
+| `-RequestId` | 回执绑定 ID（自动 `sess-<uuid>`） | 自动 |
+| `-JsonOutput` | 输出 JSON 回执 | 关 |
+| `-KeepTempFiles` | 读取后保留回执文件 | 关 |
+| `-TargetPid` | 目标实例 PID（0=自动探测） | 0 |
+| `-Priority` | `normal` / `high` | normal |
+| `-AutoEscalate` | normal 超时自动转 high 重试 | 关 |
+| `-TimeoutSec` | 等待秒数（1–5400） | 30 |
+| `-PollIntervalMs` | 轮询间隔毫秒（50–2000） | 200 |
+| `-Mode` | `Silent` / `Visible` / `Auto` | Visible |
+| `-Model` | 指定 LM 模型名称/ID | 空（自动选择） |
+| `-ModelOptions` | hashtable 模型选项（如 `@{ thinking_mode = "deep" }`） | 无 |
+| `-LmResponseTimeoutMs` | 按请求覆盖扩展侧 LM 等待（1000–3600000） | 0 |
+| `-DiscoverModels` | 列出可用模型（Discover 集合，无需 `-Message`） | 关 |
+| `-ChannelDir` | 通道目录覆盖 | `%TEMP%\sessbridge` |
+| `-Legacy` | 旧协议（whois 文件名/载荷） | 关 |
+| `-ConversationId` | 会话上下文 ID | 空 |
+| `-TurnId` | 回合号（-1=未指定；0=显式首回合） | -1 |
 
 ```powershell
 .\client\ps\Send-IpcChatMessage.ps1 -Message "你的消息"
@@ -109,6 +183,27 @@ python client\sessbridge.py send --message "hello" --legacy
 .\client\ps\Send-IpcChatMessage.ps1 -Message "紧急" -Priority high
 .\client\ps\Send-IpcChatMessage.ps1 -Message "x" -DiscoverModels
 .\client\ps\Send-IpcChatMessage.ps1 -Message "x" -Legacy -JsonOutput
+
+# 自定义超时/轮询（快速冒烟 / 慢速长任务）
+.\client\ps\Send-IpcChatMessage.ps1 -Message "test" -TimeoutSec 10 -PollIntervalMs 100 -JsonOutput
+.\client\ps\Send-IpcChatMessage.ps1 -Message "慢查询" -TimeoutSec 120
+
+# 长任务：按请求覆盖扩展侧超时（无需重启 VS Code）
+.\client\ps\Send-IpcChatMessage.ps1 -Message "长任务" -Mode Silent -TimeoutSec 120 -LmResponseTimeoutMs 180000 -JsonOutput
+
+# 模型选项（哈希表）
+.\client\ps\Send-IpcChatMessage.ps1 -Message "x" -Mode Silent -Model "DeepSeek V4 Flash" -ModelOptions @{ thinking_mode = "deep" }
+
+# 保留回执文件（事后分析）
+.\client\ps\Send-IpcChatMessage.ps1 -Message "test" -KeepTempFiles -JsonOutput
+
+# 指定实例 / 自定义通道目录 / 旧协议
+.\client\ps\Send-IpcChatMessage.ps1 -Message "hi" -TargetPid 6288
+.\client\ps\Send-IpcChatMessage.ps1 -Message "hi" -ChannelDir "D:\temp\sb"
+.\client\ps\Send-IpcChatMessage.ps1 -Message "hi" -Legacy
+
+# 会话回合（-TurnId 0 显式首回合）
+.\client\ps\Send-IpcChatMessage.ps1 -Message "继续" -ConversationId conv-x -TurnId 1
 ```
 
 > Python 与 PowerShell 行为由同一契约测试锁定，禁止漂移。

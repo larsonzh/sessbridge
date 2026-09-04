@@ -9,7 +9,7 @@
 ## 架构总览
 
 ```
-外部客户端 (PowerShell / Python / ProofRail agent)
+外部客户端 (Python / PowerShell / sh / ProofRail agent)
     │  写入 <channel_dir>/cmd_<targetPid>.json      （outbound 消息，v1 信封）
     │  读取 <channel_dir>/res_<targetPid>.json      （回执 / 回复）
     ▼
@@ -35,6 +35,7 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 | `extension/package.json` / `extension.js` | VS Code 扩展清单与逻辑（聊天工具适配器） |
 | `client/sessbridge.py` | **主实现**：Python 3 CLI（send/wait/reply/discover） |
 | `client/ps/Send-IpcChatMessage.ps1` | PowerShell 兼容层（Windows，契约与 Python 一致） |
+| `client/sh/sessbridge.sh` | **sh 客户端**（Linux/macOS/POSIX，纯 shell；兼容 PS 与 GNU 风格参数） |
 | `pyproject.toml` | Python 客户端可安装包（pip install 后得到 `sessbridge` 命令） |
 | `installer/install.ps1` / `uninstall.ps1` | Windows 一键安装/卸载扩展 |
 | `installer/install.sh` / `uninstall.sh` | Linux/macOS（POSIX）安装/卸载扩展 |
@@ -246,7 +247,67 @@ python client\sessbridge.py reply --message "继续" --conversation-id conv-x --
 .\client\ps\Send-IpcChatMessage.ps1 -Message "继续" -ConversationId conv-x -TurnId 1
 ```
 
-> Python 与 PowerShell 行为由同一契约测试锁定，禁止漂移。
+### sh 客户端（Linux / macOS / POSIX）
+
+纯 POSIX shell 实现（`client/sh/sessbridge.sh`），**无需 Python / Node / jq**；
+同时兼容 PowerShell 风格（`-Message`）与 GNU 风格（`--message`）参数，值大小写不敏感。
+
+| 参数（PS 风格 / GNU 风格） | 说明 | 默认 |
+|------|------|------|
+| `-Message` / `--message` | 消息文本 | 空 |
+| `-Mode` / `--mode` | `Silent` / `Visible` / `Auto`（大小写不敏感） | visible |
+| `-Model` / `--model` | 指定 LM 模型名称/ID（silent/auto） | 空（自动选择） |
+| `-RequestId` / `--request-id` | 回执绑定 ID（自动 `sess-<epoch>-<hex>`） | 自动 |
+| `-TargetPid` / `--target-pid` | 目标实例 PID（0=自动探测） | 0 |
+| `-ChannelDir` / `--channel-dir` | 通道目录覆盖 | `$TMPDIR/sessbridge` |
+| `-TimeoutSec` / `--timeout` | 等待秒数 | 30 |
+| `-PollIntervalMs` / `--poll-interval` | 轮询间隔毫秒 | 200 |
+| `-KeepTempFiles` / `--keep` | 读取后保留回执文件 | 关 |
+| `-JsonOutput` / `--json-output` | 输出 JSON 回执 | 关 |
+| `-Pretty` / `--pretty` | 多行可读回执（Format-List 风格） | 关 |
+| `-Legacy` / `--legacy` | 旧协议（whois 文件名/载荷） | 关 |
+| `-Priority` / `--priority` | `normal` / `high` | normal |
+| `-AutoEscalate` / `--auto-escalate` | normal 超时自动转 high 重试 | 关 |
+| `-LmResponseTimeoutMs` / `--lm-response-timeout-ms` | 按请求覆盖扩展侧 LM 等待 | 0 |
+| `-ConversationId` / `--conversation-id` | 会话上下文 ID | 空 |
+| `-TurnId` / `--turn-id` | 回合号（0=显式首回合） | 无 |
+| `-DiscoverModels` / `--discover` / `-d` | 列出可用模型 | 关 |
+
+- PID 解析顺序：`-TargetPid` → `$VSCODE_PID` → `pgrep` → `ps -W`（Git Bash）；
+  无法解析时回退 legacy 共享路径（需配合 `-Legacy`）。
+- `-h` / `--help` 显示帮助；退出码与 Python/PS 一致（0/1/2/3）。
+
+```bash
+# 最基本用法（visible：聊天面板可见）
+sh client/sh/sessbridge.sh -Message "你的消息"
+
+# Silent 模式 + 指定模型 + JSON（捕获 AI 响应）
+sh client/sh/sessbridge.sh -Message "例行状态" -Mode Silent \
+  -Model "DeepSeek V4 Flash Vision Exp" -JsonOutput
+
+# 多行可读回执（等价 PS 的 ConvertFrom-Json | Format-List）
+sh client/sh/sessbridge.sh -Message "状态" -Mode Silent \
+  -Model "DeepSeek V4 Flash Vision Exp" -Pretty
+
+# 列出可用 LM 模型
+sh client/sh/sessbridge.sh -DiscoverModels
+
+# 保留回执 / 指定实例 / 自定义通道目录 / 旧协议
+sh client/sh/sessbridge.sh -Message "test" -KeepTempFiles -JsonOutput
+sh client/sh/sessbridge.sh -Message "hi" -TargetPid 6288
+sh client/sh/sessbridge.sh -Message "hi" -ChannelDir "/tmp/sb"
+sh client/sh/sessbridge.sh -Message "hi" -Legacy
+
+# 超时/轮询/优先级/自动升级
+sh client/sh/sessbridge.sh -Message "test" -TimeoutSec 10 -PollIntervalMs 100
+sh client/sh/sessbridge.sh -Message "紧急" -Priority high
+sh client/sh/sessbridge.sh -Message "状态" -AutoEscalate
+
+# 会话回合（-TurnId 0 显式首回合）
+sh client/sh/sessbridge.sh -Message "继续" -ConversationId conv-x -TurnId 1
+```
+
+> Python / PowerShell / sh 三个客户端由同一契约（RFC + 黄金样例 + 契约测试）锁定，禁止行为漂移。
 
 ## 通信协议
 

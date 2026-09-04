@@ -45,6 +45,41 @@ python client\sessbridge.py send --message "x" --channel-dir "D:\temp\sb"
 
 退出码：`0` 成功；`1` 本地传输失败；`2` 扩展侧失败；`3` 参数校验失败。
 
+## sh 客户端（Linux / macOS / POSIX，无需 Python）
+
+`client/sh/sessbridge.sh` 是**纯 POSIX shell 实现**（仅 `sh` + 标准工具，
+不依赖 Python / Node / jq），与 Python 主客户端和 PowerShell 兼容层共享同一契约：
+
+```sh
+# 投递消息（默认 visible）
+sh client/sh/sessbridge.sh send --message "hello"
+
+# 静默直达 LM，捕获 AI 响应
+sh client/sh/sessbridge.sh send --message "status" --mode silent --model "DeepSeek V4 Flash Vision Exp"
+
+# 列出可用 LM 模型
+sh client/sh/sessbridge.sh discover
+
+# 人类可读输出 / 多行可读回执（Format-List 风格） / JSON 输出
+sh client/sh/sessbridge.sh send --message "hello"
+sh client/sh/sessbridge.sh send --message "x" --pretty
+sh client/sh/sessbridge.sh send --message "x" --json-output --keep
+
+# 帮助
+sh client/sh/sessbridge.sh --help
+```
+
+支持 `--mode/--model/--request-id/--target-pid/--channel-dir/--timeout/
+--poll-interval/--keep/--json-output/--legacy/--priority/--auto-escalate/
+--lm-response-timeout-ms/--conversation-id/--turn-id/--discover`。
+**同时兼容 PowerShell 风格参数**：`-Message/-Mode/-Model/-RequestId/
+-TargetPid/-ChannelDir/-TimeoutSec/-PollIntervalMs/-KeepTempFiles/
+-JsonOutput/-Legacy/-Priority/-AutoEscalate/-LmResponseTimeoutMs/
+-ConversationId/-TurnId/-DiscoverModels`（值大小写不敏感）。
+通道目录默认 `$TMPDIR/sessbridge`（可用 `SESSBRIDGE_CHANNEL_DIR` 覆盖）；
+PID 解析顺序 `--target-pid` → `$VSCODE_PID` → `pgrep` → `ps -W`（Git Bash），
+无法解析时走 legacy 共享路径。退出码与 Python 客户端一致（0/1/2/3）。
+
 ## PowerShell 兼容层（Windows）
 
 ```powershell

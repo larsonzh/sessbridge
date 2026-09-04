@@ -5,7 +5,8 @@
 ## 简体中文
 
 基于文件通道的 VS Code Copilot Chat 双向 IPC。协议见
-[docs/RFC-sessbridge-channel-protocol-v1.md](../docs/RFC-sessbridge-channel-protocol-v1.md)。
+[RFC-sessbridge-channel-protocol-v1.md](https://github.com/larsonzh/sessbridge/blob/main/docs/RFC-sessbridge-channel-protocol-v1.md)。
+（仓库：https://github.com/larsonzh/sessbridge ）
 
 - 新通道：`%TEMP%\sessbridge`（可用 `SESSBRIDGE_CHANNEL_DIR` 覆盖）——
   `cmd_<pid>.json` / `res_<pid>.json` / `diag_<pid>.json`。
@@ -21,7 +22,8 @@
 ## English
 
 File-based two-way IPC to Copilot Chat.  See
-[docs/RFC-sessbridge-channel-protocol-v1.md](../docs/RFC-sessbridge-channel-protocol-v1.md).
+[RFC-sessbridge-channel-protocol-v1.md](https://github.com/larsonzh/sessbridge/blob/main/docs/RFC-sessbridge-channel-protocol-v1.md).
+(Repo: https://github.com/larsonzh/sessbridge )
 
 - New channel: `%TEMP%\sessbridge` (override `SESSBRIDGE_CHANNEL_DIR`) —
   `cmd_<pid>.json` / `res_<pid>.json` / `diag_<pid>.json`.

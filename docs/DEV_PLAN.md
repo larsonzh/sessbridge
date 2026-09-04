@@ -86,6 +86,7 @@ sessbridge/
 - [x] installer/（install/uninstall PS1+SH、build-vsix PS1+SH、legacy 清理）
 - [x] tests/（黄金样例 + 契约测试，21 项全过）
 - [x] M3 发布准备：CI（`.github/workflows/ci.yml` 三平台矩阵）+ vsix 打包脚本 + SHA256 清单工具 + 编码门禁（含 golden）
+- [x] Python 客户端包（`pyproject.toml` → `sessbridge` 命令；wheel 构建验证通过；CI 含 pip 安装冒烟）
 - [ ] S0 能力探针运行 + 能力矩阵填写（需在真实 VS Code 中执行）
 - [ ] whois 旧客户端兼容回归（需真实 VS Code 环境）
 - [ ] M2 会话回合（待 S0 结论）

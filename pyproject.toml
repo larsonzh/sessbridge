@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sessbridge"
+version = "0.1.0"
+description = "SessionBridge client — two-way session bridge to VS Code Copilot Chat (pure file IPC, stdlib only)."
+readme = "client/README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = ["vscode", "copilot", "ipc", "chat", "bridge", "session"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Build Tools",
+]
+
+[project.urls]
+Homepage = "https://github.com/larsonzh/sessbridge"
+Repository = "https://github.com/larsonzh/sessbridge"
+
+[project.scripts]
+sessbridge = "sessbridge:main"
+
+[tool.setuptools]
+# Single-file module (client/sessbridge.py) installed as top-level module
+# `sessbridge`; console script entry point stays `sessbridge:main`.
+py-modules = ["sessbridge"]
+
+[tool.setuptools.package-dir]
+"" = "client"

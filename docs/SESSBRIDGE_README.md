@@ -35,6 +35,7 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 | `extension/package.json` / `extension.js` | VS Code 扩展清单与逻辑（聊天工具适配器） |
 | `client/sessbridge.py` | **主实现**：Python 3 CLI（send/wait/reply/discover） |
 | `client/ps/Send-IpcChatMessage.ps1` | PowerShell 兼容层（Windows，契约与 Python 一致） |
+| `pyproject.toml` | Python 客户端可安装包（pip install 后得到 `sessbridge` 命令） |
 | `installer/install.ps1` / `uninstall.ps1` | Windows 一键安装/卸载扩展 |
 | `installer/install.sh` / `uninstall.sh` | Linux/macOS（POSIX）安装/卸载扩展 |
 | `installer/uninstall-legacy.ps1` / `.sh` | 移除旧 whois `vscode-chat-sender`（防双装冲突） |
@@ -58,6 +59,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "installer/install.ps1" -For
 ```
 
 扩展代码修改后重新执行安装脚本并重载窗口即可。
+
+### Python 客户端（可选，pip 安装）
+
+```powershell
+# 安装生成 sessbridge 命令（也支持直接从仓库调用 python client\sessbridge.py ...）
+python -m pip install --no-deps .
+
+# 使用
+sessbridge send --message "hello"
+```
 
 ### Linux / macOS（POSIX）
 

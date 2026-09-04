@@ -2,6 +2,20 @@
 
 ## Python 3 客户端（主实现，仅 stdlib）
 
+### 安装（可选，pip）
+
+```powershell
+# 从仓库安装（生成 sessbridge 命令）
+python -m pip install --no-deps .
+
+# 之后可直接使用
+sessbridge send --message "hello"
+```
+
+也支持不安装、直接从仓库调用：`python client\sessbridge.py send --message "hello"`。
+
+### 用法
+
 ```powershell
 # 投递消息并等待回执（默认 visible，聊天面板可见）
 python client\sessbridge.py send --message "hello"
@@ -26,7 +40,7 @@ python client\sessbridge.py send --message "hello" --legacy
 
 # JSON 输出 / 指定目标实例 / 自定义通道目录
 python client\sessbridge.py send --message "x" --json-output --target-pid 12345
-$env:SESSBRIDGE_CHANNEL_DIR = "D:\temp\sb"; python client\sessbridge.py send --message "x"
+python client\sessbridge.py send --message "x" --channel-dir "D:\temp\sb"
 ```
 
 退出码：`0` 成功；`1` 本地传输失败；`2` 扩展侧失败；`3` 参数校验失败。

@@ -1,0 +1,3 @@
+# Keep all repository text files as LF regardless of Git's core.autocrlf
+# (Windows).  See docs/CODING_CONVENTIONS.md — every tracked file uses LF.
+* text=auto eol=lf

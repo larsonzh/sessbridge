@@ -146,6 +146,24 @@ function isSuccessfulReceipt(data) {
   return data.success === true;
 }
 
+// Reject a promise that never settles inside `ms` — used around
+// model.sendRequest, which some LM providers (e.g. the DeepSeek vizard
+// channel) may leave pending indefinitely.  Without this, a silent request
+// can hang for the whole client timeout and never receive ANY receipt.
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error('timeout');
+      err.__timeout = true;
+      reject(err);
+    }, ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 function writeReceipt(resPath, data, requestId, message) {
   writeResult(resPath, data);
   if (requestId && isSuccessfulReceipt(data)) {
@@ -270,7 +288,21 @@ async function sendViaLmApi(cmd, resPath, legacy) {
     if (!ADAPTER.hasLmApi()) {
       return false;
     }
-    const allModels = await ADAPTER.selectModels();
+    let allModels;
+    try {
+      allModels = await withTimeout(ADAPTER.selectModels(), responseTimeoutMs);
+    } catch (err) {
+      if (err && err.__timeout) {
+        const detail = 'lm_select_models_timeout';
+        if (legacy) {
+          writeResult(resPath, legacyResponse(cmd, false, 'lm_api_unavailable', { detail: detail }));
+        } else {
+          writeResult(resPath, newResponse(cmd, 'timeout', { error: detail }));
+        }
+        return true;
+      }
+      return false;
+    }
     if (!allModels || allModels.length === 0) { return false; }
 
     const pickModel = (models, preferred) => {
@@ -293,17 +325,49 @@ async function sendViaLmApi(cmd, resPath, legacy) {
     if (cmd.modelOptions && Object.keys(cmd.modelOptions).length > 0) {
       requestOptions.modelOptions = cmd.modelOptions;
     }
-    const response = await ADAPTER.sendLm(model, [userMessage], requestOptions);
+    let response;
+    try {
+      response = await withTimeout(
+        ADAPTER.sendLm(model, [userMessage], requestOptions), responseTimeoutMs);
+    } catch (err) {
+      if (err && err.__timeout) {
+        // Provider never answered inside the budget — write an explicit
+        // timeout receipt instead of leaving the caller waiting blind.
+        const detail = 'lm_send_request_timeout';
+        if (legacy) {
+          writeResult(resPath, legacyResponse(cmd, false, 'lm_api_unavailable', { detail: detail }));
+        } else {
+          writeResult(resPath, newResponse(cmd, 'timeout', { error: detail }));
+        }
+        return true;
+      }
+      return false;
+    }
 
     const chunks = [];
     const deadline = Date.now() + responseTimeoutMs;
     let truncated = false;
+    // Guard the STREAM phase too: some providers leave response.text's
+    // iterator pending forever.  With plain `for await`, the deadline check
+    // below could never run, so the request would hang with no receipt.
     try {
-      for await (const chunk of response.text) {
-        chunks.push(chunk);
-        if (Date.now() > deadline) { truncated = true; break; }
+      const iterator = response.text[Symbol.asyncIterator]();
+      while (true) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          truncated = true;
+          break;
+        }
+        const next = await withTimeout(iterator.next(), remaining);
+        if (next.done) { break; }
+        chunks.push(next.value);
       }
-    } catch (_) {}
+    } catch (err) {
+      if (err && err.__timeout) {
+        truncated = true;
+      }
+      // Other stream errors: keep what we already collected.
+    }
 
     const aiResponse = chunks.join('') || null;
     if (legacy) {

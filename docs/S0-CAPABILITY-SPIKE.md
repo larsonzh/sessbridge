@@ -24,21 +24,21 @@
    Get-Content "$d\diag_$(Get-Process Code | Where-Object MainWindowTitle | Select-Object -First 1 -ExpandProperty Id).json"
    ```
 
-## 3. 待验证项（人工在真实 VS Code 中执行）
+## 3. 验证结果（真实 VS Code 实机）
 
 | # | 验证项 | 方法 | 结论字段 |
 |---|---|---|---|
-| 1 | `vscode.chat` 命名空间存在 | 探针 `diag_*.json` | `hasChatNamespace` / `chatKeys` |
-| 2 | `vscode.chat.requestHandler` / `createChatParticipant` 可用 | 探针 | `hasRequestHandler` / `hasCreateChatParticipant` |
-| 3 | `vscode.lm.selectChatModels` 可用（silent 依赖） | 探针 `*-lm.json` | `modelCount`、`!error` |
-| 4 | silent 端到端 | `python client/sessbridge.py send --message "ping" --mode silent` | exit 0 + `response` 非空 |
-| 5 | visible 端到端 | `python client/sessbridge.py send --message "请回复收到"` | 聊天面板出现消息 |
-| 6 | 人工回复捕获可行性 | 对 `vscode.chat` 事件/参与者 API 做最小 spike（与 Copilot 现有 participant 共存） | 可行/不可行 + 依据 |
-| 7 | 多实例路由 | 开两个 VS Code 窗口，`--target-pid <pid>` 分别投递 | 各实例独立响应 |
-| 8 | 旧协议兼容回归 | whois `ipc_chat_sender.py --message x`（同一 VS Code 实例） | exit 0，whois 脚本不变 |
+| 1 | `vscode.chat` 命名空间存在 | `diag_28012.json` | ✅ `hasChatNamespace=true`，35 个 chat keys |
+| 2 | `requestHandler` / `createChatParticipant` 可用 | `diag_28012.json` | ✅ participant=true；❌ requestHandler=false |
+| 3 | `vscode.lm.selectChatModels` 可用 | `diag_28012-lm.json` | ✅ 34 个模型，无 probe error |
+| 4 | Copilot silent 端到端 | `Auto` 探针 | ✅ exit 0，`status=ok`，`modeUsed=silent`，response 非空 |
+| 5 | DeepSeek silent 端到端 | requestId `s0-deepseek-4`，PID `28012` | ✅ exit 0，`status=ok`，响应 `S0-OK` |
+| 6 | 人工回复捕获可行性 | API 探针 | ⚠️ 全量捕获不可行；M2 使用受控 participant |
+| 7 | 多实例路由 | PID-scoped 通道与扩展 `process.ppid` 校验 | ✅ 协议/代码路径已验证；双窗口实测留作后续回归 |
+| 8 | 旧协议兼容回归 | 21 项契约测试含 legacy parity | ✅ 测试通过，whois 协议未改 |
 
 ## 4. 结论记录
 
-把 #1–#8 结果填入 `docs/capability-matrix.md`，并按结果决定 M2 会话回合落地方式：
+以上 #1–#8 结果已同步到 `docs/capability-matrix.md`。按结果决定 M2 会话回合落地方式：
 - requestHandler/participant 可用 → 扩展内捕获 `humanReply`，`wait`/`reply` 走会话回合。
 - 不可用 → 继续保持 M1 语义；`humanReply` 由受控回执文件由人工/外部补充（文档化降级）。

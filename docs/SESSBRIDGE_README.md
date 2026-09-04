@@ -314,7 +314,7 @@ python client\sessbridge.py reply --message "继续" --conversation-id conv-x --
 ```
 
 `status` 值（M1）：`ok` / `lm_api_unavailable` / `extension_error` / `no_message` /
-`discovery` / `discovery_failed`。另有 `modeUsed`（auto 实际路径）、`model`（silent 模型信息）。
+`discovery` / `discovery_failed` / `timeout`。另有 `modeUsed`（auto 实际路径）、`model`（silent 模型信息）。
 
 ### 可能的失败原因 / 退出码
 

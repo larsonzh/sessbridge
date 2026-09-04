@@ -54,7 +54,10 @@ param(
 
     [switch]$KeepTempFiles,
 
-    [ValidateRange(0, 99999)]
+    # Upper bound matches the historical Windows max PID (real PIDs can
+    # exceed 99999 on long-uptime systems); Python client accepts any
+    # positive int here, so this must not be tighter than that (parity).
+    [ValidateRange(0, 4194304)]
     [int]$TargetPid = 0,
 
     [ValidateSet('normal', 'high')]
@@ -89,8 +92,10 @@ param(
     [AllowEmptyString()]
     [string]$ConversationId = '',
 
-    [ValidateRange(0, 999999)]
-    [int]$TurnId = 0
+    # -1 = not specified (parity with Python's argparse default=None); any
+    # value >= 0, including 0, is sent explicitly (see docs/RFC turnId=0 example).
+    [ValidateRange(-1, 999999)]
+    [int]$TurnId = -1
 )
 
 Set-StrictMode -Version Latest
@@ -134,10 +139,47 @@ function Get-RequestId {
     return ('sess-' + [Guid]::NewGuid().ToString('N'))
 }
 
-$targetPid = Resolve-TargetPid -PreferredPid $TargetPid
+# Folds a new-protocol (schemaVersion/status) receipt into the legacy shape
+# (success/reason/request_id) so the rest of the script has one uniform
+# contract to check, regardless of which channel answered.  Without this,
+# `$outcome.success` on a real new-protocol receipt throws
+# PropertyNotFoundException under Set-StrictMode (the field does not exist
+# on that shape) instead of reporting success/failure correctly.
+function ConvertTo-NormalizedOutcome {
+    param($Outcome)
+
+    if ($null -eq $Outcome -or $Outcome -is [hashtable]) {
+        # Hashtable outcomes are only produced locally (poll_timeout /
+        # write_cmd_failed) and are already legacy-shaped by construction.
+        return $Outcome
+    }
+
+    $hasSchemaVersion = ($null -ne $Outcome.PSObject.Properties['schemaVersion']) -and
+        (-not [string]::IsNullOrWhiteSpace([string]$Outcome.schemaVersion))
+    if (-not $hasSchemaVersion) {
+        return $Outcome  # already legacy-shaped (whois dialect)
+    }
+
+    $status = ''
+    if ($null -ne $Outcome.PSObject.Properties['status']) { $status = [string]$Outcome.status }
+    $success = ($status -eq 'ok' -or $status -eq 'discovery')
+    $requestId = ''
+    if ($null -ne $Outcome.PSObject.Properties['requestId']) { $requestId = [string]$Outcome.requestId }
+
+    $normalized = $Outcome.PSObject.Copy()
+    Add-Member -InputObject $normalized -NotePropertyName 'success' -NotePropertyValue $success -Force
+    Add-Member -InputObject $normalized -NotePropertyName 'reason' -NotePropertyValue $status -Force
+    Add-Member -InputObject $normalized -NotePropertyName 'request_id' -NotePropertyValue $requestId -Force
+    if (($null -ne $Outcome.PSObject.Properties['response']) -and (-not [string]::IsNullOrEmpty([string]$Outcome.response))) {
+        Add-Member -InputObject $normalized -NotePropertyName 'ai_response' -NotePropertyValue $Outcome.response -Force
+    }
+    return $normalized
+}
+
+$resolvedPid = Resolve-TargetPid -PreferredPid $TargetPid
 
 # ---- channel dir / file paths ---------------------------------------------
-$legacyChannel = ($Legacy.IsPresent -or $targetPid -eq 0)
+$legacyChannel = ($Legacy.IsPresent -or $resolvedPid -eq 0)
 if (-not $legacyChannel) {
     if ([string]::IsNullOrWhiteSpace($ChannelDir)) {
         $ChannelDir = [string]$env:SESSBRIDGE_CHANNEL_DIR
@@ -150,9 +192,9 @@ if (-not $legacyChannel) {
 $cmdFile = ''
 $resFile = ''
 if ($legacyChannel) {
-    if ($targetPid -gt 0) {
-        $cmdFile = Join-Path $env:TEMP ("vscode_chat_send_cmd_{0}.json" -f $targetPid)
-        $resFile = Join-Path $env:TEMP ("vscode_chat_send_res_{0}.json" -f $targetPid)
+    if ($resolvedPid -gt 0) {
+        $cmdFile = Join-Path $env:TEMP ("vscode_chat_send_cmd_{0}.json" -f $resolvedPid)
+        $resFile = Join-Path $env:TEMP ("vscode_chat_send_res_{0}.json" -f $resolvedPid)
     } else {
         $cmdFile = Join-Path $env:TEMP 'vscode_chat_send_cmd.json'
         $resFile = Join-Path $env:TEMP 'vscode_chat_send_result.json'
@@ -161,8 +203,8 @@ if ($legacyChannel) {
     if (-not (Test-Path -LiteralPath $ChannelDir)) {
         New-Item -ItemType Directory -Path $ChannelDir -Force | Out-Null
     }
-    $cmdFile = Join-Path $ChannelDir ("cmd_{0}.json" -f $targetPid)
-    $resFile = Join-Path $ChannelDir ("res_{0}.json" -f $targetPid)
+    $cmdFile = Join-Path $ChannelDir ("cmd_{0}.json" -f $resolvedPid)
+    $resFile = Join-Path $ChannelDir ("res_{0}.json" -f $resolvedPid)
 }
 
 # ---- validate message -----------------------------------------------------
@@ -219,7 +261,7 @@ function New-EnvelopePayload {
     }
     if ($LmResponseTimeoutMs -gt 0) { $payload.lmResponseTimeoutMs = $LmResponseTimeoutMs }
     if (-not [string]::IsNullOrWhiteSpace([string]$ConversationId)) { $payload.conversationId = $ConversationId }
-    if ($TurnId -gt 0) { $payload.turnId = $TurnId }
+    if ($TurnId -ge 0) { $payload.turnId = $TurnId }
     if (-not [string]::IsNullOrWhiteSpace([string]$Model)) { $payload.model = $Model }
     if ($Discover) { $payload.discover = $true }
     return $payload
@@ -240,8 +282,18 @@ function Invoke-SendAttempt {
 
     try {
         $jsonText = $Payload | ConvertTo-Json -Compress -Depth 4
-        [System.IO.File]::WriteAllText([string]$CmdFile, [string]$jsonText,
-            [System.Text.UTF8Encoding]::new($false))
+        # Atomic command write (F8): temp file in the same directory, then
+        # File.Move(overwrite) into place — the extension polls for the file
+        # and must never see a half-written JSON payload.
+        $tmpCmd = [string]$CmdFile + ('.tmp-' + $PID + '-' + [Guid]::NewGuid().ToString('N'))
+        [System.IO.File]::WriteAllText($tmpCmd, [string]$jsonText, [System.Text.UTF8Encoding]::new($false))
+        try {
+            [System.IO.File]::Move($tmpCmd, [string]$CmdFile, $true)
+        } catch {
+            # Fallback when the overwrite move is unavailable on this runtime.
+            [System.IO.File]::Copy($tmpCmd, [string]$CmdFile, $true)
+            Remove-Item -LiteralPath $tmpCmd -Force -ErrorAction SilentlyContinue
+        }
     } catch {
         return @{ success = $false; reason = "write_cmd_failed:$($_.Exception.Message)"; request_id = $effectiveRequestId }
     }
@@ -300,14 +352,14 @@ if ($discoverMode) {
         New-LegacyPayload -MessageText '' -RequestId $effectiveRequestId -Priority $Priority -Discover $true
     } else {
         New-EnvelopePayload -MessageText '' -RequestId $effectiveRequestId -Priority $Priority `
-            -TargetPid $targetPid -TimeoutSecValue $TimeoutSec -Discover $true
+            -TargetPid $resolvedPid -TimeoutSecValue $TimeoutSec -Discover $true
     }
 } else {
     $payload = if ($legacyChannel) {
         New-LegacyPayload -MessageText $messageText -RequestId $effectiveRequestId -Priority $Priority -Discover $false
     } else {
         New-EnvelopePayload -MessageText $messageText -RequestId $effectiveRequestId -Priority $Priority `
-            -TargetPid $targetPid -TimeoutSecValue $TimeoutSec -Discover $false
+            -TargetPid $resolvedPid -TimeoutSecValue $TimeoutSec -Discover $false
     }
 }
 
@@ -319,7 +371,7 @@ if ($null -eq $outcome -and $AutoEscalate.IsPresent -and $Priority -eq 'normal')
         New-LegacyPayload -MessageText $messageText -RequestId $effectiveRequestId -Priority 'high' -Discover $discoverMode
     } else {
         New-EnvelopePayload -MessageText $messageText -RequestId $effectiveRequestId -Priority 'high' `
-            -TargetPid $targetPid -TimeoutSecValue $TimeoutSec -Discover $discoverMode
+            -TargetPid $resolvedPid -TimeoutSecValue $TimeoutSec -Discover $discoverMode
     }
     $outcome = Invoke-SendAttempt -AttemptPriority 'high' -CmdFile $cmdFile -ResFile $resFile -Payload $payload2
     if ($null -ne $outcome) { $escalated = $true }
@@ -330,7 +382,7 @@ if ($null -eq $outcome) {
         success      = $false
         reason       = 'poll_timeout'
         request_id   = $effectiveRequestId
-        target_pid   = $targetPid
+        target_pid   = $resolvedPid
         cmd_file     = $cmdFile
         res_file     = $resFile
     }
@@ -340,17 +392,23 @@ if ($null -eq $outcome) {
     Add-Member -InputObject $outcome -NotePropertyName 'escalated_reason' -NotePropertyValue 'normal_timeout_retry_with_high' -Force
 }
 
+$outcome = ConvertTo-NormalizedOutcome -Outcome $outcome
+
 if ($JsonOutput) {
     $outcome | ConvertTo-Json -Compress -Depth 4 | Write-Output
 } elseif ($discoverMode -and $outcome.success) {
     $models = @($outcome.models)
     Write-Output ("Available Models (total {0}):" -f $models.Count)
     foreach ($m in $models) {
-        Write-Output ("  {0,-40} {1,-30} {2,-20} {3,-20}" -f $m.name, $m.id, $m.vendor, $m.family)
+        $family = ''
+        if ($null -ne $m.PSObject.Properties['family']) { $family = [string]$m.family }
+        Write-Output ("  {0,-40} {1,-30} {2,-20} {3,-20}" -f $m.name, $m.id, $m.vendor, $family)
     }
 } elseif ($outcome.success) {
     Write-Output 'OK'
-    if ($outcome.ai_response) { Write-Output $outcome.ai_response }
+    $aiResponse = ''
+    if ($null -ne $outcome.PSObject.Properties['ai_response']) { $aiResponse = [string]$outcome.ai_response }
+    if (-not [string]::IsNullOrEmpty($aiResponse)) { Write-Output $aiResponse }
 } else {
     Write-Error "Command failed: $($outcome.reason)"
 }

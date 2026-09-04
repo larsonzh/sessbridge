@@ -13,6 +13,8 @@ import importlib.util
 import io
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -44,16 +46,17 @@ def load_golden(name):
 class MockReceiver(threading.Thread):
     """Acts like the SessionBridge extension: pick up cmd, write res."""
 
-    def __init__(self, cmd_file, res_file, res_factory, snapshots=None):
+    def __init__(self, cmd_file, res_file, res_factory, snapshots=None, timeout=5.0):
         super().__init__(daemon=True)
         self.cmd_file = cmd_file
         self.res_file = res_file
         self.res_factory = res_factory
         self.snapshots = snapshots if snapshots is not None else []
         self.seen = threading.Event()
+        self.timeout = timeout
 
     def run(self):
-        deadline = time.time() + 5
+        deadline = time.time() + self.timeout
         while time.time() < deadline:
             if os.path.isfile(self.cmd_file):
                 try:
@@ -118,6 +121,15 @@ def legacy_ok(data):
         'success': True, 'reason': 'sent_via_clipboard_fallback',
         'request_id': data.get('request_id', data.get('requestId', '')),
         'priority': data.get('priority', 'normal'),
+    }
+
+
+def busy(data):
+    return {
+        'schemaVersion': '1', 'requestId': data.get('requestId', data.get('request_id', '')),
+        'status': 'busy', 'mode': data.get('mode', 'silent'), 'response': '', 'humanReply': '',
+        'error': 'busy: another request is in flight for this response channel', 'polledMs': 0,
+        'extensionVersion': '0.1.0', 'finishedAt': ISO,
     }
 
 
@@ -296,6 +308,163 @@ class ContractTestCase(unittest.TestCase):
         code, _ = self.run_client(['reply', '--message', 'ok', '--conversation-id', 'conv-x'])
         self.assertEqual(code, 0)
         self.assertEqual(snap[0]['conversationId'], 'conv-x')
+
+    # ---- concurrency (F1) -----------------------------------------------
+    def _golden_factory(self, name, legacy=False):
+        """Receipt factory driven by a golden fixture (requestId rebound to
+        the actual command so requestId binding still holds)."""
+        def factory(data):
+            golden = load_golden(name)
+            if legacy:
+                golden['request_id'] = data.get('request_id', data.get('requestId', ''))
+            else:
+                golden['requestId'] = data.get('requestId', data.get('request_id', ''))
+            return golden
+        return factory
+
+    def test_send_busy_exit2(self):
+        """status=busy (overlapping in-flight request, RFC §4.4) must be
+        treated as an extension-side failure (exit 2), never as a local
+        poll_timeout (exit 1) that would mask the real cause."""
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        mock = MockReceiver(cmd_file, res_file, busy)
+        mock.start()
+        code, out = self.run_client(['send', '--message', 'x', '--mode', 'silent', '--json-output'])
+        self.assertEqual(code, 2)
+        receipt = json.loads(out)
+        self.assertEqual(receipt['status'], 'busy')
+
+    # ---- F7: remaining status/reason branches ---------------------------
+    def test_send_no_message_exit2(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        mock = MockReceiver(cmd_file, res_file, self._golden_factory('res_no_message.new.json'))
+        mock.start()
+        code, out = self.run_client(['send', '--message', 'x', '--json-output'])
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(out)['status'], 'no_message')
+
+    def test_send_extension_error_exit2(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        mock = MockReceiver(cmd_file, res_file, self._golden_factory('res_extension_error.new.json'))
+        mock.start()
+        code, out = self.run_client(['send', '--message', 'x', '--json-output'])
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(out)['status'], 'extension_error')
+
+    def test_discover_failed_exit2(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        mock = MockReceiver(cmd_file, res_file, self._golden_factory('res_discovery_failed.new.json'))
+        mock.start()
+        code, out = self.run_client(['discover', '--json-output'])
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(out)['status'], 'discovery_failed')
+
+    def test_legacy_lm_api_unavailable_exit2(self):
+        orig = _tempfile.gettempdir
+        _tempfile.gettempdir = lambda: self.tmp
+        try:
+            cmd_file = os.path.join(self.tmp, 'vscode_chat_send_cmd_%d.json' % FAKE_PID)
+            res_file = os.path.join(self.tmp, 'vscode_chat_send_res_%d.json' % FAKE_PID)
+            mock = MockReceiver(cmd_file, res_file, self._golden_factory('res_legacy.lm_api_unavailable.json', legacy=True))
+            mock.start()
+            code, out = self.run_client(['send', '--message', 'x', '--legacy', '--json-output'])
+            self.assertEqual(code, 2)
+            receipt = json.loads(out)
+            self.assertFalse(receipt['success'])
+            self.assertEqual(receipt['reason'], 'lm_api_unavailable')
+        finally:
+            _tempfile.gettempdir = orig
+
+    # ---- F1: idempotent retry reuses requestId ---------------------------
+    def test_idempotent_retry_reuses_request_id(self):
+        """A caller that retries with the SAME requestId (RFC §4.4) must be
+        able to recover after a transient busy reply — the extension replays
+        the cached successful receipt (no side-effect re-run).  Here we drive
+        the client twice with one fixed requestId: first busy (exit 2), then
+        successful (exit 0)."""
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        rid = 'sess-idempotent-retry-regression'
+        mock = MockReceiver(cmd_file, res_file, busy)
+        mock.start()
+        code, _ = self.run_client(['send', '--message', 'same', '--request-id', rid, '--json-output'])
+        self.assertEqual(code, 2)
+
+        snap = []
+        mock2 = MockReceiver(cmd_file, res_file, ok_visible, snap)
+        mock2.start()
+        code, out = self.run_client(['send', '--message', 'same', '--request-id', rid, '--json-output'])
+        self.assertEqual(code, 0)
+        self.assertEqual(snap[0]['requestId'], rid)
+
+    # ---- F8: atomic command write leaves no temp residue -----------------
+    def test_cmd_write_leaves_no_tmp_residue(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        mock = MockReceiver(cmd_file, res_file, ok_visible)
+        mock.start()
+        code, _ = self.run_client(['send', '--message', 'atomic check'])
+        self.assertEqual(code, 0)
+        leftovers = [n for n in os.listdir(self.channel) if n.startswith('cmd_') and '.tmp-' in n]
+        self.assertEqual(leftovers, [])
+
+
+class PowerShellParityTestCase(unittest.TestCase):
+    """Drives Send-IpcChatMessage.ps1 through the same mock-receiver harness
+    used for the Python client, to catch behavior drift between the two
+    implementations (docs/CODING_CONVENTIONS.md §3 '双实现防漂移').
+
+    Skips gracefully when no PowerShell interpreter is available.
+    """
+
+    PS_EXE = shutil.which('pwsh') or shutil.which('powershell.exe') or shutil.which('powershell')
+    PS_SCRIPT = os.path.join(ROOT, 'client', 'ps', 'Send-IpcChatMessage.ps1')
+
+    def setUp(self):
+        if not self.PS_EXE:
+            self.skipTest('no PowerShell interpreter found on PATH')
+        self.tmp = tempfile.mkdtemp(prefix='sessbridge-ps-test-')
+        self.channel = os.path.join(self.tmp, 'channel')
+        os.makedirs(self.channel, exist_ok=True)
+        self.env = dict(os.environ)
+        self.env['VSCODE_PID'] = str(FAKE_PID)
+        self.env['SESSBRIDGE_CHANNEL_DIR'] = self.channel
+
+    def run_ps(self, args, timeout=15):
+        cmd = [self.PS_EXE, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', self.PS_SCRIPT] + args
+        proc = subprocess.run(cmd, cwd=ROOT, env=self.env, capture_output=True, text=True, timeout=timeout)
+        return proc
+
+    def test_send_visible_success_exit0(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        snap = []
+        # Windows PowerShell 5.1 cold-start can take longer than the default
+        # mock window (assembly load, execution-policy checks) — give it room.
+        mock = MockReceiver(cmd_file, res_file, ok_visible, snap, timeout=20.0)
+        mock.start()
+        proc = self.run_ps(['-Message', 'ps parity check', '-TimeoutSec', '15'], timeout=25)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(len(snap), 1)
+        self.assertEqual(snap[0]['message'], 'ps parity check')
+
+    def test_turn_id_zero_sent_explicitly(self):
+        """Regression for F3: -TurnId 0 must reach the envelope, not be
+        silently dropped (it was, when the PS client used '-gt 0')."""
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        snap = []
+        mock = MockReceiver(cmd_file, res_file, ok_visible, snap, timeout=20.0)
+        mock.start()
+        proc = self.run_ps(['-Message', 'turn zero', '-TurnId', '0', '-TimeoutSec', '15'], timeout=25)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(len(snap), 1)
+        self.assertIn('turnId', snap[0])
+        self.assertEqual(snap[0]['turnId'], 0)
 
 
 if __name__ == '__main__':

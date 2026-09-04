@@ -1,0 +1,7 @@
+﻿{
+  "success": false,
+  "reason": "clipboard_fallback_failed",
+  "request_id": "sess-0123456789abcdef0123456789abcdef",
+  "priority": "normal",
+  "detail": "clipboard API unavailable"
+}

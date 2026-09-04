@@ -17,5 +17,6 @@ node_modules/
 Thumbs.db
 
 # Local state (channel files, logs, test fixtures)
-tmp/
+tmp/*
+!tmp/.gitkeep
 *.log

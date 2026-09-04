@@ -1,0 +1,6 @@
+﻿{
+  "success": false,
+  "reason": "lm_api_unavailable",
+  "request_id": "sess-0123456789abcdef0123456789abcdef",
+  "priority": "normal"
+}

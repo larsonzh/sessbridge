@@ -88,7 +88,6 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 
 ```json
 {
-  "schemaVersion": "1",
   "requestId": "sess-<auto-uuid>",
   "mode": "visible | silent | auto",
   "priority": "high | normal",
@@ -111,6 +110,8 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
   响应等待（仅本次生效），未提供时用扩展侧默认。
 - 写命令文件前，客户端**必须先清理该 requestId 的陈旧结果文件**（先删旧结果再写新命令，
   防止误删此轮新鲜回复导致假 `poll_timeout`——继承 whois 已验证的坑）。
+- 客户端写命令文件必须**原子写**（同目录临时文件 + rename/replace 落位），禁止直接写出
+  目标文件：扩展按轮询发现文件，绝不应当读到半写状态；命令文件方向与回执方向同等要求。
 
 ### 4.2 回执（inbound，`res_<pid>.json`）
 
@@ -118,7 +119,7 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 {
   "schemaVersion": "1",
   "requestId": "sess-<same-as-outbound>",
-  "status": "ok | lm_api_unavailable | extension_error | timeout | ...",
+  "status": "ok | lm_api_unavailable | extension_error | busy | timeout | ...",
   "mode": "visible | silent | auto",
   "response": "AI 或人工回复文本（可能为空）",
   "humanReply": "人工回复（visible 双向回合时捕获，可能为空）",
@@ -150,6 +151,25 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 - 结果文件单实例、原子写；优先级 `high` 打断语义仅对本实例生效。
 - 消息与回执的寿命：超过保留期（默认 24h）或已被消费的陈旧文件由扩展/调用方清理，
   清理动作留痕到诊断日志。
+- **同一响应文件的串行化（不同 `requestId` 的重叠请求）**：响应文件（`res_<pid>.json` 及各
+  legacy 等价文件）是单一槽位，一次只能承载一份回执。扩展按**响应文件路径**维护 in-flight
+  标记：若上一条命令（任意 `requestId`）仍在处理中，同路径的新命令**立即**返回
+  `status: "busy"`（legacy：`reason: "busy"`），而不是让两次写入互相覆盖、造成先到请求的
+  回执被静默吞掉、调用方误判为 `poll_timeout`。调用方收到 `busy` 应自行退避重试；
+  客户端退出码归类为 `2`（扩展侧失败，非本地传输失败）。
+  新协议通道与 legacy 通道使用不同的物理文件，因此二者互不受此限制影响。
+- **损坏命令文件隔离**：命令文件无法解析为 JSON 时，扩展必须将其重命名隔离
+  （`<file>.bad-<pid>-<timestamp>`）并写诊断记录（`diag_<pid>.json`，
+  `reason: "invalid_command_payload"`），不得原地保留后在下一轮询继续读取——
+  否则会造成静默无限重试，调用方只看到 `poll_timeout` 且无法定位根因。
+- **成功回执的幂等重放**（回应单槽位回执的残余竞态）：回执文件是单槽位，客户端
+  “先删陈旧回执再写命令”与扩展 `busy` 写入之间仍存在极小窗口——并发请求 B 的
+  `busy` 可能覆盖刚完成的请求 A 的回执，令 A 的调用方看到一次假 `poll_timeout`。
+  处理：客户端按 RFC §4.4 复用同一 `requestId` 重试；扩展对**成功类**回执
+  （`status=ok/discovery` 或 legacy `success=true`）做内存缓存（默认 5 分钟、
+  ≤50 条，按 `requestId`），收到同 `requestId`、同通道文件、同消息的新命令时
+  **直接重放缓存回执**，不重复执行副作用（粘贴/LM 调用）。错误类回执不缓存，
+  重试必须真实再执行。该机制不改变线上协议形态（回执仍为 `res_<pid>.json`）。
 
 ## 5. 模式语义（S0 能力验证后冻结）
 
@@ -196,7 +216,10 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 ## 9. 安全边界（首版）
 
 - 本地单用户威胁模型；通道目录默认在用户临时目录，**不宣称强隔离/沙箱**。
-- 消息不可包含机密凭据；客户端与扩展均需实现秘密脱敏（回显仅 case 名/诊断）。
+- 消息不可包含机密凭据——这是**调用方约定**，当前实现不做任何脱敏处理：诊断文件
+  （`diag_*.json`）与回执（`res_*.json`）均**原样透传** `message`/`response`/环境元信息
+  （版本、PID、API 可用性等），不做正则扫描或屏蔽。若调用方需要脱敏保证，须在写入
+  消息前自行处理；本仓库暂无该能力的验收测试或黄金样例。
 - 多实例路由基于 PID 校验；防止跨用户串扰（通道目录需按用户隔离）。
 - 陈旧命令/结果文件主动清理；原子写 + 独占写避免读写竞争。
 - 扩展权限最小化：只读自身 ppid 匹配的通道文件、只写自身结果文件。

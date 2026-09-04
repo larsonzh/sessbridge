@@ -42,6 +42,18 @@ const channelDir = (process.env.SESSBRIDGE_CHANNEL_DIR || '').trim() ||
   path.join(os.tmpdir(), 'sessbridge');
 ensureDir(channelDir);
 
+// ---- In-flight guard (per response-file path) -----------------------------
+// A response file (res_<pid>.json, or a legacy equivalent) is a single slot:
+// two concurrent commands targeting the same file would race to overwrite
+// each other's receipt (whichever finishes last wins, the other looks like
+// a false poll_timeout to its caller).  Serialize per response-file path and
+// answer overlapping commands with status="busy" instead of silently
+// clobbering the in-flight receipt.
+const inFlightResFiles = new Set();
+function isBusy(resFile) { return inFlightResFiles.has(resFile); }
+function markBusy(resFile) { inFlightResFiles.add(resFile); }
+function clearBusy(resFile) { inFlightResFiles.delete(resFile); }
+
 // ---- Chat tool adapter (single seam to a specific chat tool) --------------
 // SessionBridge currently targets VS Code Copilot Chat (SESSBRIDGE_CHAT_TOOL
 // default = 'copilot').  Everything this extension knows about a specific
@@ -113,13 +125,72 @@ function writeResult(targetPath, data) {
   }
 }
 
+// ---- Idempotent receipt replay (F1 residual race) --------------------------
+// Receipts are written to a single slot per response path (res_<pid>.json).
+// A caller that just sent request A may have its fresh receipt overwritten by
+// a concurrent request B's `busy` answer (B's client deletes the res file
+// right before writing its command, opening a small window).  Per RFC §4.4,
+// clients retry reusing the SAME requestId, so we cache successful receipts
+// and replay them on a repeat requestId instead of re-executing the side
+// effect (paste / LM call).  Errors are NOT cached — a retry should really
+// re-attempt.
+const RECEIPT_CACHE_TTL_MS = 5 * 60 * 1000;
+const RECEIPT_CACHE_MAX = 50;
+const receiptCache = new Map(); // requestId -> {resPath, message, data, at}
+
+function isSuccessfulReceipt(data) {
+  if (!data || typeof data !== 'object') { return false; }
+  if (typeof data.status === 'string') {
+    return data.status === 'ok' || data.status === 'discovery';
+  }
+  return data.success === true;
+}
+
+function writeReceipt(resPath, data, requestId, message) {
+  writeResult(resPath, data);
+  if (requestId && isSuccessfulReceipt(data)) {
+    receiptCache.set(requestId, {
+      resPath: resPath, message: message || '', data: data, at: Date.now(),
+    });
+    while (receiptCache.size > RECEIPT_CACHE_MAX) {
+      const oldest = receiptCache.keys().next().value;
+      if (oldest === undefined) { break; }
+      receiptCache.delete(oldest);
+    }
+  }
+}
+
+function replayIfCached(requestId, resFile, message) {
+  if (!requestId) { return false; }
+  const cached = receiptCache.get(requestId);
+  if (!cached) { return false; }
+  if (Date.now() - cached.at > RECEIPT_CACHE_TTL_MS) {
+    receiptCache.delete(requestId);
+    return false;
+  }
+  if (cached.resPath !== resFile || cached.message !== message) { return false; }
+  writeResult(resFile, cached.data); // replay: no side effect re-execution
+  return true;
+}
+
 // ---- Command normalization -------------------------------------------------
 // Returns a normalized command object or null.  `isLegacyFile` pins the
 // response schema to the legacy shape so whois clients keep working.
+//
+// F9: legacy detection is now STRICT — it follows the channel file location
+// (isLegacyFile) or an explicit `legacy: true` flag only.  The previous
+// heuristic (raw.request_id present && no schemaVersion => legacy) could
+// silently switch a malformed NEW-protocol envelope (e.g. mistyped
+// `request_id` instead of `requestId`) into the legacy dialect with no
+// diagnostic.  New-protocol files must carry schemaVersion '1'; anything
+// else is rejected as an invalid payload (fail-close, like ProofRail's
+// requirement of explicit contract recognition).
 function normalizeCommand(raw, isLegacyFile) {
   if (!raw || typeof raw !== 'object') { return null; }
-  const legacy = !!isLegacyFile || raw.legacy === true ||
-    (raw.request_id !== undefined && raw.schemaVersion === undefined);
+  const legacy = !!isLegacyFile || raw.legacy === true;
+  if (!legacy) {
+    if (raw.schemaVersion !== SCHEMA_VERSION) { return null; }
+  }
   const mode = String(raw.mode || 'visible').trim().toLowerCase();
   return {
     legacy: legacy,
@@ -178,9 +249,9 @@ async function handleDiscover(cmd, resPath, legacy) {
       maxInputTokens: m.maxInputTokens || undefined,
     }));
     if (legacy) {
-      writeResult(resPath, legacyResponse(cmd, true, 'discovery', { models: catalog }));
+      writeReceipt(resPath, legacyResponse(cmd, true, 'discovery', { models: catalog }), cmd.requestId, cmd.message);
     } else {
-      writeResult(resPath, newResponse(cmd, 'discovery', { models: catalog }));
+      writeReceipt(resPath, newResponse(cmd, 'discovery', { models: catalog }), cmd.requestId, cmd.message);
     }
   } catch (err) {
     const detail = String(err);
@@ -236,18 +307,18 @@ async function sendViaLmApi(cmd, resPath, legacy) {
 
     const aiResponse = chunks.join('') || null;
     if (legacy) {
-      writeResult(resPath, legacyResponse(cmd, true, 'sent_via_lm_api', {
+      writeReceipt(resPath, legacyResponse(cmd, true, 'sent_via_lm_api', {
         model_name: model.name, model_vendor: model.vendor, model_id: model.id,
         ai_response: aiResponse,
         ai_response_truncated: truncated || undefined,
-      }));
+      }), cmd.requestId, cmd.message);
     } else {
-      writeResult(resPath, newResponse(cmd, 'ok', {
+      writeReceipt(resPath, newResponse(cmd, 'ok', {
         response: aiResponse || '',
         modeUsed: 'silent',
         model: { name: model.name, vendor: model.vendor, id: model.id },
         aiResponseTruncated: truncated || undefined,
-      }));
+      }), cmd.requestId, cmd.message);
     }
     return true;
   } catch (_) {
@@ -257,7 +328,23 @@ async function sendViaLmApi(cmd, resPath, legacy) {
 
 /** Visible path: chat panel delivery (clipboard + chat commands). */
 async function sendViaClipboard(cmd, resPath, legacy) {
+  // Save/restore the user's clipboard so this delivery mode does not
+  // silently discard whatever they had copied before the send.
+  let previousClipboard = null;
+  let clipboardSaved = false;
+  let clipboardRestored = false;
+  const restoreClipboard = async () => {
+    if (clipboardSaved && !clipboardRestored) {
+      clipboardRestored = true;
+      try { await vscode.env.clipboard.writeText(previousClipboard); } catch (_) {}
+    }
+  };
   try {
+    try {
+      previousClipboard = await vscode.env.clipboard.readText();
+      clipboardSaved = true;
+    } catch (_) { /* clipboard read unavailable on this platform — skip restore */ }
+
     // Clear stale pending queue first — avoids the "保留/移除" dialog.
     await runPanelCommand('removePending');
     if (cmd.priority === 'high') {
@@ -269,6 +356,9 @@ async function sendViaClipboard(cmd, resPath, legacy) {
     await runPanelCommand('focusInput');
     await new Promise(r => setTimeout(r, PASTE_DELAY_MS));
     await runPanelCommand('paste');
+    // Restore the caller's original clipboard as soon as the paste has
+    // consumed our message — minimizes the window it stays overwritten.
+    await restoreClipboard();
     await new Promise(r => setTimeout(r, SUBMIT_DELAY_MS));
 
     if (cmd.priority === 'normal') {
@@ -279,11 +369,12 @@ async function sendViaClipboard(cmd, resPath, legacy) {
 
     // M1: visible receipt returns immediately; humanReply capture is M2 (S0 decides).
     if (legacy) {
-      writeResult(resPath, legacyResponse(cmd, true, 'sent_via_clipboard_fallback'));
+      writeReceipt(resPath, legacyResponse(cmd, true, 'sent_via_clipboard_fallback'), cmd.requestId, cmd.message);
     } else {
-      writeResult(resPath, newResponse(cmd, 'ok', { modeUsed: 'visible' }));
+      writeReceipt(resPath, newResponse(cmd, 'ok', { modeUsed: 'visible' }), cmd.requestId, cmd.message);
     }
   } catch (err) {
+    await restoreClipboard();
     if (legacy) {
       writeResult(resPath, legacyResponse(cmd, false, 'clipboard_fallback_failed', { detail: String(err) }));
     } else {
@@ -293,14 +384,24 @@ async function sendViaClipboard(cmd, resPath, legacy) {
 }
 
 function processCommandFile(cmdFile, resFile, isLegacyFile) {
-  let raw, cmd;
+  let raw;
   try {
     raw = fs.readFileSync(cmdFile, 'utf-8');
-    cmd = JSON.parse(raw);
-    try { fs.unlinkSync(cmdFile); } catch (_) {}
   } catch (_) {
+    return; // file vanished between existsSync and read — benign race, retry next tick
+  }
+
+  let cmd;
+  try {
+    cmd = JSON.parse(raw);
+  } catch (err) {
+    // Malformed payload: quarantine instead of leaving it in place, which
+    // would otherwise be re-read and re-fail on every poll tick forever
+    // with zero diagnostic signal (silent infinite retry).
+    quarantineCommandFile(cmdFile, String(err));
     return;
   }
+  try { fs.unlinkSync(cmdFile); } catch (_) {}
 
   const normalized = normalizeCommand(cmd, isLegacyFile);
   if (!normalized) {
@@ -310,8 +411,27 @@ function processCommandFile(cmdFile, resFile, isLegacyFile) {
     return;
   }
 
+  // Idempotent replay: a retried requestId (same channel file + same message)
+  // gets its successful receipt back without re-running the side effect.
+  if (replayIfCached(normalized.requestId, resFile, normalized.message)) {
+    return;
+  }
+
   if (normalized.isDiscover) {
-    setImmediate(() => { handleDiscover(normalized, resFile, normalized.legacy); });
+    if (isBusy(resFile)) {
+      writeResult(resFile, normalized.legacy
+        ? legacyResponse(normalized, false, 'busy')
+        : newResponse(normalized, 'busy', { error: 'busy: another request is in flight for this response channel' }));
+      return;
+    }
+    markBusy(resFile);
+    setImmediate(async () => {
+      try {
+        await handleDiscover(normalized, resFile, normalized.legacy);
+      } finally {
+        clearBusy(resFile);
+      }
+    });
     return;
   }
 
@@ -322,6 +442,13 @@ function processCommandFile(cmdFile, resFile, isLegacyFile) {
     return;
   }
 
+  if (isBusy(resFile)) {
+    writeResult(resFile, normalized.legacy
+      ? legacyResponse(normalized, false, 'busy')
+      : newResponse(normalized, 'busy', { error: 'busy: another request is in flight for this response channel' }));
+    return;
+  }
+  markBusy(resFile);
   setImmediate(async () => {
     try {
       if (normalized.mode === 'visible') {
@@ -342,7 +469,29 @@ function processCommandFile(cmdFile, resFile, isLegacyFile) {
       writeResult(resFile, normalized.legacy
         ? legacyResponse(normalized, false, 'command_error', { detail: String(err) })
         : newResponse(normalized, 'extension_error', { error: String(err) }));
+    } finally {
+      clearBusy(resFile);
     }
+  });
+}
+
+// ---- Corrupt command file quarantine (F2) ---------------------------------
+function quarantineCommandFile(cmdFile, detail) {
+  const quarantined = cmdFile + '.bad-' + process.pid + '-' + Date.now();
+  try {
+    fs.renameSync(cmdFile, quarantined);
+  } catch (_) {
+    try { fs.unlinkSync(cmdFile); } catch (_) {}
+  }
+  writeResult(newDiagFile(MY_WINDOW_PID), {
+    schemaVersion: SCHEMA_VERSION,
+    reason: 'invalid_command_payload',
+    pid: MY_WINDOW_PID,
+    file: cmdFile,
+    quarantinedTo: quarantined,
+    detail: detail,
+    at: new Date().toISOString(),
+    extensionVersion: EXTENSION_VERSION,
   });
 }
 

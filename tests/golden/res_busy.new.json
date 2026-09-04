@@ -1,0 +1,12 @@
+﻿{
+  "schemaVersion": "1",
+  "requestId": "sess-0123456789abcdef0123456789abcdef",
+  "status": "busy",
+  "mode": "silent",
+  "response": "",
+  "humanReply": "",
+  "error": "busy: another request is in flight for this response channel",
+  "polledMs": 0,
+  "extensionVersion": "0.1.0",
+  "finishedAt": "2026-09-04T00:00:05Z"
+}

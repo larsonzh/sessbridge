@@ -38,7 +38,9 @@
 - 其它（`.py`/`.js`/`.go`/`.txt`/`.gitignore`/`LICENSE`）：UTF-8 **without BOM** + LF。
 - 门禁：`python tools\enforce_encoding.py`（违规 exit 1）；`--fix` 只做编码/EOL 转换，
   **不得改变 JSON 值、数组顺序或语义**。
-
+## 临时文件
+- 临时/一次性文件放仓库根 `tmp/`（已 gitignore，仅 `tmp/.gitkeep` 保留目录）；
+  **用完立即清除**，不得长期遗留。
 ## 测试与验证
 - 契约测试：`python tests\test_contract.py`（纯 stdlib，无需 VS Code）。
 - 语法检查：`node --check extension\extension.js`；PS 用 Parser::ParseFile。

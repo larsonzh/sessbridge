@@ -201,8 +201,14 @@ def send_and_poll(cmd_file, res_file, payload, args, discover: bool):
             pass
 
     try:
-        with open(cmd_file, 'w', encoding='utf-8') as f:
+        # Atomic command write (F8): write a sibling temp file, then rename
+        # into place.  The extension polls for the file; a partially-written
+        # command (non-atomic direct write) would be parsed as malformed and
+        # quarantined, or — worse — re-read every poll tick.
+        tmp_cmd = '%s.tmp-%d-%s' % (cmd_file, os.getpid(), uuid.uuid4().hex[:8])
+        with open(tmp_cmd, 'w', encoding='utf-8') as f:
             json.dump(payload, f, ensure_ascii=False)
+        os.replace(tmp_cmd, cmd_file)
     except OSError as exc:
         return {'success': False, 'reason': f'write_cmd_failed:{exc}',
                 'request_id': payload.get('request_id', payload.get('requestId', ''))}

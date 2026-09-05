@@ -26,6 +26,32 @@ Install: `powershell -File installer\install.ps1 -Force` from repo root.
 
 > For now, get the VSIX extension and client scripts from the GitHub repo: https://github.com/larsonzh/sessbridge
 
+### Enable the experimental API (required for `@sbr-review`)
+
+This extension uses the proposed API `chatParticipantAdditions` for the controlled
+human-reply channel (RFC §5.2, mentioned as `@sbr-review` in the chat panel).
+Color core features (`visible`/`silent`/`auto` delivery) work without it, but
+the participant will not appear until you enable the proposed API:
+
+1. Install the extension (Marketplace or VSIX) and reload the window.
+2. **Option A — command line (one-time):** quit VS Code, then start it with:
+   ```
+   code --enable-proposed-api=larsonzh.sessbridge
+   ```
+3. **Option B — persistent setting:**
+   1. Open the Command Palette (`Ctrl+Shift+P`).
+   2. Run **Preferences: Configure Runtime Arguments** (首选项: 配置运行时参数).
+   3. In the opened `argv.json`, add (keep the existing fields):
+      ```json
+      {
+        "enable-proposed-api": ["larsonzh.sessbridge"]
+      }
+      ```
+   4. Save and restart VS Code entirely (quit and reopen, not just Reload Window).
+
+After either option, type `@sbr-review` in the chat panel — the participant
+`SessionBridge Review` should appear in the mention list.
+
 ---
 
 ## 简体中文
@@ -50,3 +76,28 @@ Install: `powershell -File installer\install.ps1 -Force` from repo root.
 安装：仓库根目录执行 `powershell -File installer\install.ps1 -Force`。
 
 > VSIX 扩展和客户端脚本当前请到 GitHub 仓库获取：https://github.com/larsonzh/sessbridge
+
+### 启用实验性 API（`@sbr-review` 必需）
+
+本扩展的受控人工回复通道（RFC §5.2，面板中通过 `@sbr-review` 提及）使用了
+proposed API `chatParticipantAdditions`。核心投递功能（`visible`/`silent`/`auto`）
+**不需要**启用即可使用，但参与者（participant）只有在启用实验性 API 后才会出现：
+
+1. 安装扩展（Marketplace 或 VSIX）并重载窗口。
+2. **方式 A — 命令行（一次性）：** 完全退出 VS Code，然后用如下命令重新启动：
+   ```
+   code --enable-proposed-api=larsonzh.sessbridge
+   ```
+3. **方式 B — 持久设置（推荐）：**
+   1. 打开命令面板（`Ctrl+Shift+P`）。
+   2. 执行 **首选项: 配置运行时参数**（Preferences: Configure Runtime Arguments）。
+   3. 在打开的 `argv.json` 中新增（保留原有字段）：
+      ```json
+      {
+        "enable-proposed-api": ["larsonzh.sessbridge"]
+      }
+      ```
+   4. 保存后**完全退出并重启** VS Code（不是“重载窗口”）。
+
+完成任一方式后，在聊天面板输入 `@sbr-review` —— 提及列表应出现
+“SessionBridge Review”参与者。

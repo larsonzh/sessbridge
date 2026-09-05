@@ -56,6 +56,21 @@
   and the participant handler writes the reply into `res_<pid>.json` under `humanReply`
   (the "controlled receipt-file supplement" fallback permitted by RFC §5).
 
+**§5.1 Silent conversation history end-to-end test (2026-09-05, VS Code 1.136.1,
+  extension 0.1.0, `Auto`/copilot model)**:
+- Session `s0-smoke-001` passed all three turns: ① injected marker `SESS-SMOKE-42`
+  (turnId 0); ② asked "what was the marker?" → replied `SESS-SMOKE-42` (turn 2
+  referenced the turn-1 fact); ③ `--reset-history` then injected `PHASE-2-OK` →
+  history reset (`totalTurns` back to 1).
+- Receipt `history` health metrics correct: turn1 `{totalTurns:1, inputTokensEst:17}`,
+  turn2 `{totalTurns:2, inputTokensEst:27}`, after reset `{totalTurns:1}`;
+  `isTruncated:false`.
+- Disk persistence: `history_s0-smoke-001.json` shape correct (`schemaVersion=1`,
+  messages carry `role/requestId/turnId/createdAt`); after reset the file returned
+  to `turnId=1 / 2 messages`.
+- **Conclusion: §5.1 silent conversation history end-to-end ✅ PASS** (multi-turn
+  context, health-metric echo, and explicit reset all match the RFC and golden samples).
+
 ## 4. Degradation route (confirmed)
 
 - Keep the "delivery + poll receipt" one-way semantics (M1 status quo): `visible`

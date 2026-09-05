@@ -43,6 +43,12 @@
 - `requestHandler` 不可用，`sendRequest` 不是 `vscode.chat` API → **无法全量静默捕获**聊天回复；不采用（也不得退化为 GUI 自动化）。
 - `createChatParticipant` 可用 → M2 采用**受控回复通道**：注册 `sessbridge.review` participant，人工以 `@sessbridge.review <回复>` 触发，participant handler 把回复写入 `res_<pid>.json` 的 `humanReply`（RFC §5 允许的“受控回执文件补充”降级路径）。
 
+**§5.1 静默会话历史端到端实测（2026-09-05，VS Code 1.136.1，扩展 0.1.0，`Auto`/copilot 模型）**：
+- 会话 `s0-smoke-001` 三轮全过：① 注入标记 `SESS-SMOKE-42`（turnId 0）；② 追问“刚才的标记”→ 回复 `SESS-SMOKE-42`（第 2 轮引用第 1 轮事实）；③ `--reset-history` 后注入 `PHASE-2-OK` → 历史重置（`totalTurns` 回到 1）。
+- 回执 `history` 健康度正确：turn1 `{totalTurns:1, inputTokensEst:17}`、turn2 `{totalTurns:2, inputTokensEst:27}`、reset 后 `{totalTurns:1}`；`isTruncated:false`。
+- 磁盘持久化：`history_s0-smoke-001.json` 结构正确（`schemaVersion=1`，messages 含 `role/requestId/turnId/createdAt`）；reset 后文件回到 `turnId=1 / 2 条消息`。
+- **结论：§5.1 静默会话历史端到端实测 ✅ PASS**（多轮上下文、健康度回显、显式重置均符合 RFC 与黄金样例）。
+
 ## 4. 降级路线（已确认）
 
 - 保持“投递 + 轮询回执”单向语义（M1 现状）：`visible` 投递后即时回执，`humanReply` 留空。

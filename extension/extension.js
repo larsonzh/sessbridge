@@ -77,6 +77,17 @@ const TOOL_ADAPTERS = {
       typeof vscode.lm.selectChatModels === 'function',
     selectModels: () => vscode.lm.selectChatModels({}),
     sendLm: (model, messages, options) => model.sendRequest(messages, options),
+    registerReviewParticipant: (handler) => {
+      if (typeof vscode.chat !== 'undefined' &&
+          typeof vscode.chat.createChatParticipant === 'function') {
+        try {
+          // Namespaced participant id; triggered in the panel as
+          // `@sessbridge.review <conversationId> <reply>` (RFC §5.2).
+          return vscode.chat.createChatParticipant('sessbridge.review', handler);
+        } catch (_) { return null; }
+      }
+      return null;
+    },
   },
   // Future tools add an adapter here:
   //   continue: { toolKey: 'continue', hasLmApi: ..., sendLm: ..., panelCommands: ... }
@@ -231,6 +242,10 @@ function historyArchivePath(cid) {
   return path.join(channelDir, 'history_' + sanitizeConversationId(cid) + '.archive.json');
 }
 
+function replyFilePath(cid) {
+  return path.join(channelDir, 'reply_' + sanitizeConversationId(cid) + '.json');
+}
+
 function estimateTokens(text) {
   return Math.ceil(String(text || '').length / 4); // conservative chars/4
 }
@@ -294,6 +309,62 @@ function saveHistory(cid, hist) {
 function deleteHistory(cid) {
   try { fs.unlinkSync(historyFilePath(cid)); } catch (_) {}
   try { fs.unlinkSync(historyArchivePath(cid)); } catch (_) {}
+}
+
+// ---- Controlled human-reply channel (RFC §5.2) -----------------------------
+// Human review goes through a chat participant: `@sessbridge.review
+// <conversationId> <reply>` in the panel.  The handler validates the
+// conversation id (fail-close) and writes `reply_<conversationId>.json`
+// (runtime file: UTF-8 without BOM + LF, atomic write).
+function writeHumanReply(cid, replyText) {
+  const cidRaw = String(cid || '').trim();
+  if (!cidRaw) {
+    throw new Error('missing conversationId — usage: @sessbridge.review <conversationId> <reply>');
+  }
+  let hist = null;
+  try { hist = loadHistory(cidRaw); } catch (_) {}
+  const data = {
+    schemaVersion: SCHEMA_VERSION,
+    conversationId: cidRaw,
+    turnId: (hist && Number(hist.turnId)) || 1,
+    humanReply: String(replyText || ''),
+    requestId: '',
+    reviewedAt: new Date().toISOString(),
+    extensionVersion: EXTENSION_VERSION,
+  };
+  writeResult(replyFilePath(cidRaw), data);
+  return data;
+}
+
+async function handleReviewPrompt(request, _context, stream, _token) {
+  const prompt = String((request && request.prompt) || '').trim();
+  const respond = (text) => {
+    try {
+      if (stream && typeof stream.markdown === 'function') {
+        stream.markdown(text);
+      } else if (request && typeof request.reply === 'function') {
+        request.reply(text);
+      }
+    } catch (_) {}
+  };
+  const m = prompt.match(/^(\S+)\s+([\s\S]*)$/);
+  if (!m) {
+    respond('用法：@sessbridge.review <conversationId> <回复内容>（缺少会话 ID，未写入回复）');
+    return;
+  }
+  const cid = m[1].trim();
+  const replyText = m[2].trim();
+  if (!replyText) {
+    respond('回复内容为空，未写入回复文件。');
+    return;
+  }
+  try {
+    const data = writeHumanReply(cid, replyText);
+    respond('已记录人工回复 → ' + path.basename(replyFilePath(cid)) +
+      '（conversationId=' + data.conversationId + '）');
+  } catch (err) {
+    respond('写入人工回复失败：' + String(err));
+  }
 }
 
 function appendArchive(cid, evicted) {
@@ -953,6 +1024,14 @@ let cleanupTimer = null;
 
 function activate(context) {
   probeChatApi();
+
+  // RFC §5.2: controlled human-reply channel via chat participant.
+  try {
+    const participant = ADAPTER.registerReviewParticipant(handleReviewPrompt);
+    if (participant) {
+      context.subscriptions.push(participant);
+    }
+  } catch (_) {}
 
   tryProcessCommand();
   pollTimer = setInterval(tryProcessCommand, POLL_MS);

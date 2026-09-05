@@ -106,6 +106,10 @@ sh installer/uninstall-legacy.sh
 
 子命令：`send` / `wait` / `reply` / `discover`。
 
+- `send`：投递新消息并等待回执（可带 `--conversation-id` 延续上下文）；
+- `reply`：继续某个既有会话（`--conversation-id` **必填**；信封与 `send`+会话 ID 等价）；
+- `wait`：等待其它进程已产生的回执（只读，不投递）；`discover`：列出可用 LM 模型。
+
 通用参数（各子命令均支持）：
 
 | 参数 | 说明 | 默认 |
@@ -125,8 +129,8 @@ sh installer/uninstall-legacy.sh
 | `--model` | 指定 LM 模型名称/ID（silent/auto） | 空（自动选择） |
 | `--model-options` | JSON 模型选项（如 `{"thinking_mode":"deep"}`） | 无 |
 | `--lm-response-timeout-ms` | 按请求覆盖扩展侧 LM 等待（1000–3600000） | 0（用扩展默认） |
-| `--conversation-id` | 会话上下文 ID（`reply` 必填；`send` 透传） | 空 |
-| `--turn-id` | 回合号（0=新回合） | 无（透传） |
+| `--conversation-id` | 会话上下文 ID（`reply` 必填；`send` 可选，传入即激活多轮历史） | 空 |
+| `--turn-id` | 回合号（可选；省略=按历史自动递增；0=显式新回合） | 省略（自动递增） |
 | `--reset-history` | 显式重置并清空该会话历史（重新开始） | 关 |
 | `--no-compress` | 关键轮次跳过 assistant 输出智能压缩 | 关 |
 
@@ -246,7 +250,7 @@ python client\sessbridge.py send --message "开始新阶段" --mode silent `
 | `-ChannelDir` | 通道目录覆盖 | `%TEMP%\sessbridge` |
 | `-Legacy` | 旧协议（whois 文件名/载荷） | 关 |
 | `-ConversationId` | 会话上下文 ID | 空 |
-| `-TurnId` | 回合号（-1=未指定；0=显式首回合） | -1 |
+| `-TurnId` | 回合号（可选；省略/-1=按历史自动递增；0=显式首回合） | -1（自动递增） |
 | `-ResetHistory` | 显式重置并清空该会话历史 | 关 |
 | `-NoCompress` | 关键轮次跳过 assistant 输出智能压缩 | 关 |
 
@@ -302,7 +306,7 @@ python client\sessbridge.py send --message "开始新阶段" --mode silent `
 | `-AutoEscalate` / `--auto-escalate` | normal 超时自动转 high 重试 | 关 |
 | `-LmResponseTimeoutMs` / `--lm-response-timeout-ms` | 按请求覆盖扩展侧 LM 等待 | 0 |
 | `-ConversationId` / `--conversation-id` | 会话上下文 ID | 空 |
-| `-TurnId` / `--turn-id` | 回合号（0=显式首回合） | 无 |
+| `-TurnId` / `--turn-id` | 回合号（可选；省略=按历史自动递增；0=显式首回合） | 省略（自动递增） |
 | `-ResetHistory` / `--reset-history` | 显式重置并清空该会话历史 | 关 |
 | `-NoCompress` / `--no-compress` | 关键轮次跳过 assistant 输出智能压缩 | 关 |
 | `-DiscoverModels` / `--discover` / `-d` | 列出可用模型 | 关 |

@@ -108,6 +108,13 @@ sh installer/uninstall-legacy.sh
 
 Subcommands: `send` / `wait` / `reply` / `discover`.
 
+- `send`: deliver a new message and wait for the receipt (optionally pass
+  `--conversation-id` to keep context across turns);
+- `reply`: continue an existing conversation (`--conversation-id` **required**;
+  envelope equivalent to `send` + conversation id);
+- `wait`: wait for a receipt already produced by another process (read-only,
+  no delivery); `discover`: list available LM models.
+
 Common parameters (supported by all subcommands):
 
 | Parameter | Description | Default |
@@ -127,8 +134,8 @@ Common parameters (supported by all subcommands):
 | `--model` | LM model name/ID (silent/auto) | empty (auto-select) |
 | `--model-options` | JSON model options (e.g. `{"thinking_mode":"deep"}`) | none |
 | `--lm-response-timeout-ms` | per-request override of the extension-side LM wait (1000–3600000) | 0 (extension default) |
-| `--conversation-id` | session context ID (required for `reply`; passed through by `send`) | empty |
-| `--turn-id` | turn number (0=new turn) | none (passed through) |
+| `--conversation-id` | session context ID (required for `reply`; optional for `send` — enables multi-turn history) | empty |
+| `--turn-id` | turn number (optional; omitted = auto-increment from history; 0 = explicit new turn) | omitted (auto-increment) |
 | `--reset-history` | explicitly reset and clear conversation history (restart fresh) | off |
 | `--no-compress` | bypass smart compression of assistant response for critical checkpoints | off |
 
@@ -253,7 +260,7 @@ parameters retained, new: `ChannelDir` / `Legacy` / `ConversationId` / `TurnId`)
 | `-ChannelDir` | channel directory override | `%TEMP%\sessbridge` |
 | `-Legacy` | legacy protocol (whois file names/payload) | off |
 | `-ConversationId` | session context ID | empty |
-| `-TurnId` | turn number (-1=unspecified; 0=explicit first turn) | -1 |
+| `-TurnId` | turn number (optional; omitted/-1 = auto-increment from history; 0 = explicit first turn) | -1 (auto-increment) |
 | `-ResetHistory` | explicitly reset and clear conversation history | off |
 | `-NoCompress` | bypass assistant response compression for critical checkpoints | off |
 
@@ -310,7 +317,7 @@ parameters, values case-insensitive.
 | `-AutoEscalate` / `--auto-escalate` | auto-retry as high after normal timeout | off |
 | `-LmResponseTimeoutMs` / `--lm-response-timeout-ms` | per-request extension-side LM wait override | 0 |
 | `-ConversationId` / `--conversation-id` | session context ID | empty |
-| `-TurnId` / `--turn-id` | turn number (0=explicit first turn) | none |
+| `-TurnId` / `--turn-id` | turn number (optional; omitted = auto-increment from history; 0 = explicit first turn) | omitted (auto-increment) |
 | `-ResetHistory` / `--reset-history` | explicitly reset and clear conversation history | off |
 | `-NoCompress` / `--no-compress` | bypass assistant response compression for critical checkpoints | off |
 | `-DiscoverModels` / `--discover` / `-d` | list available models | off |

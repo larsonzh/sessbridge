@@ -79,6 +79,31 @@ sh client/sh/sessbridge.sh send --message "hello"
 python tests\test_contract.py
 ```
 
+### Install / uninstall release artifacts
+
+Download from [GitHub Releases](https://github.com/larsonzh/sessbridge/releases) —
+`sessbridge-0.1.0.vsix` and `sessbridge-0.1.0-py3-none-any.whl` (verify with
+`SHA256SUMS`):
+
+```powershell
+# --- VS Code extension (.vsix) ---
+# Install (from a downloaded .vsix, or local dist/)
+code --install-extension sessbridge-0.1.0.vsix
+# Uninstall
+code --uninstall-extension larsonzh.sessbridge
+
+# --- Python client (wheel) ---
+python -m pip install sessbridge-0.1.0-py3-none-any.whl
+# Verify (console script on PATH, or python -m)
+sessbridge --help
+python -m sessbridge --help
+# Uninstall
+python -m pip uninstall sessbridge
+```
+
+> The wheel target is the `sessbridge` module (stdlib only, no dependencies);
+> the console script is only on PATH when the Python `Scripts` directory is.
+
 ### Protocol
 
 Authoritative spec: [docs/RFC-sessbridge-channel-protocol-v1_EN.md](docs/RFC-sessbridge-channel-protocol-v1_EN.md)
@@ -171,6 +196,31 @@ sh client/sh/sessbridge.sh send --message "hello"
 # 6. 契约测试
 python tests\test_contract.py
 ```
+
+## 安装 / 卸载发布物
+
+从 [GitHub Releases](https://github.com/larsonzh/sessbridge/releases) 下载
+`sessbridge-0.1.0.vsix` 与 `sessbridge-0.1.0-py3-none-any.whl`（用 `SHA256SUMS`
+校验）：
+
+```powershell
+# --- VS Code 扩展（.vsix） ---
+# 安装（已下载的 .vsix，或本地 dist/）
+code --install-extension sessbridge-0.1.0.vsix
+# 卸载
+code --uninstall-extension larsonzh.sessbridge
+
+# --- Python 客户端（wheel） ---
+python -m pip install sessbridge-0.1.0-py3-none-any.whl
+# 验证（控制台脚本需在 PATH，或使用 python -m）
+sessbridge --help
+python -m sessbridge --help
+# 卸载
+python -m pip uninstall sessbridge
+```
+
+> wheel 安装的是 `sessbridge` 模块（仅标准库、无依赖）；控制台脚本仅在
+> Python 的 `Scripts` 目录位于 PATH 时可用。
 
 ## 协议
 

@@ -484,6 +484,49 @@ class ContractTestCase(unittest.TestCase):
         self.assertIn('evictedTurns', trunc)
         self.assertIn('evictedChars', trunc)
 
+    # ---- §5.2 human-reply channel ---------------------------------------
+    def test_human_reply_sample_structure_matches_contract(self):
+        sample = load_golden('reply_sample.json')
+        self.assertEqual(sample.get('schemaVersion'), '1')
+        self.assertEqual(sample.get('conversationId'), 'prfrail-review-1')
+        self.assertIsInstance(sample.get('turnId'), int)
+        self.assertTrue(bool(sample.get('humanReply')))
+        self.assertTrue(bool(sample.get('reviewedAt')))
+        self.assertTrue(bool(sample.get('extensionVersion')))
+        self.assertIn('requestId', sample)
+
+    def test_wait_reads_human_reply_file(self):
+        cid = 'prfrail-review-1'
+        os.makedirs(self.channel, exist_ok=True)
+        reply_file = os.path.join(self.channel, 'reply_%s.json' % cid)
+        with open(reply_file, 'w', encoding='utf-8') as fh:
+            json.dump(load_golden('reply_sample.json'), fh, ensure_ascii=False)
+        code, out = self.run_client(['wait', '--conversation-id', cid,
+                                     '--json-output', '--timeout', '5',
+                                     '--poll-interval', '100'])
+        self.assertEqual(code, 0)
+        receipt = json.loads(out)
+        self.assertEqual(receipt['humanReply'], '同意')
+        self.assertEqual(receipt['conversationId'], cid)
+        self.assertEqual(receipt['turnId'], 3)
+        self.assertFalse(os.path.exists(reply_file), 'reply file consumed by default')
+
+    def test_wait_keep_retains_human_reply_file(self):
+        cid = 'prfrail-review-2'
+        os.makedirs(self.channel, exist_ok=True)
+        reply_file = os.path.join(self.channel, 'reply_%s.json' % cid)
+        data = load_golden('reply_sample.json')
+        data['conversationId'] = cid
+        with open(reply_file, 'w', encoding='utf-8') as fh:
+            json.dump(data, fh, ensure_ascii=False)
+        code, out = self.run_client(['wait', '--conversation-id', cid, '--keep',
+                                     '--json-output', '--timeout', '5',
+                                     '--poll-interval', '100'])
+        self.assertEqual(code, 0)
+        receipt = json.loads(out)
+        self.assertEqual(receipt['humanReply'], '同意')
+        self.assertTrue(os.path.exists(reply_file), '--keep retains reply file')
+
 
 class PowerShellParityTestCase(unittest.TestCase):
     """Drives sessbridge.ps1 through the same mock-receiver harness

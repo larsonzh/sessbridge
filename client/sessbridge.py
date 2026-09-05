@@ -487,11 +487,34 @@ def main(argv=None) -> int:
     return code
 
 
+def _reply_to_outcome(reply: dict) -> dict:
+    """Fold a `reply_<conversationId>.json` human-reply record (RFC §5.2) into
+    the receipt-shaped outcome so `wait` can surface `humanReply` normally."""
+    return {
+        'schemaVersion': reply.get('schemaVersion') or '1',
+        'requestId': reply.get('requestId') or '',
+        'status': 'ok',
+        'mode': 'visible',
+        'response': '',
+        'humanReply': reply.get('humanReply') or '',
+        'conversationId': reply.get('conversationId') or '',
+        'turnId': reply.get('turnId'),
+        'error': '',
+        'polledMs': 0,
+        'extensionVersion': reply.get('extensionVersion') or '',
+        'finishedAt': reply.get('reviewedAt') or '',
+        'modeUsed': 'visible',
+        'reviewedAt': reply.get('reviewedAt') or '',
+    }
+
+
 def _wait_impl(args, cmd_file, res_file, is_legacy_channel, target_pid, request_id) -> int:
     """Wait for an existing receipt (already issued by another process/sender).
 
     Polls the channel directory for result files whose requestId /
     conversationId match.  Defaults to the resolved (cmd,res) pair's res file.
+    Also watches `reply_<conversationId>.json` human-reply records (RFC §5.2)
+    and folds them into a receipt-like outcome (humanReply field).
     """
     poll_interval = max(0.05, args.poll_interval / 1000.0)
     deadline = time.time() + args.timeout
@@ -503,7 +526,7 @@ def _wait_impl(args, cmd_file, res_file, is_legacy_channel, target_pid, request_
         d = channel_dir()
         if os.path.isdir(d):
             for name in os.listdir(d):
-                if name.startswith('res_') and name.endswith('.json'):
+                if name.endswith('.json') and (name.startswith('res_') or name.startswith('reply_')):
                     candidates.add(os.path.join(d, name))
 
     while time.time() < deadline:
@@ -512,9 +535,13 @@ def _wait_impl(args, cmd_file, res_file, is_legacy_channel, target_pid, request_
                 continue
             try:
                 with open(f, 'r', encoding='utf-8') as fh:
-                    outcome = json.load(fh)
+                    raw = json.load(fh)
             except (OSError, ValueError):
                 continue
+            if os.path.basename(f).startswith('reply_'):
+                outcome = _reply_to_outcome(raw)
+            else:
+                outcome = raw
             rid = str(outcome.get('requestId') or outcome.get('request_id') or '')
             cid = str(outcome.get('conversationId') or '')
             if (args.request_id and rid != args.request_id):
@@ -531,6 +558,7 @@ def _wait_impl(args, cmd_file, res_file, is_legacy_channel, target_pid, request_
 
     outcome = {'success': False, 'reason': 'poll_timeout', 'request_id': request_id}
     return finalize_and_exit(outcome, args, False, target_pid)
+
 
 
 if __name__ == '__main__':

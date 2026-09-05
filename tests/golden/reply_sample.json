@@ -1,0 +1,9 @@
+﻿{
+  "schemaVersion": "1",
+  "conversationId": "prfrail-review-1",
+  "turnId": 3,
+  "humanReply": "同意",
+  "requestId": "sess-0123456789abcdef0123456789abcdef",
+  "reviewedAt": "2026-09-05T00:00:00Z",
+  "extensionVersion": "0.1.0"
+}

@@ -8,7 +8,8 @@
 > protocol I: the local file/IPC contract for **session-level two-way** interaction
 > between VS Code Copilot Chat and external automation.
 >
-> Revision (2026-09-05): added §5.1 silent conversation history contract.
+> Revision (2026-09-05): added §5.1 silent conversation history contract;
+> added §5.2 controlled human-reply channel (M2 `humanReply`) contract.
 >
 > Origin and inheritance: derived from the whois project's `tools/test/` IPC Chat Sender
 > (`vscode-chat-sender` extension, `Send-IpcChatMessage.ps1`, `ipc_chat_sender.py`,
@@ -317,6 +318,50 @@ Field contract:
     failure rollback / eviction echoing), followed by contract tests, and finally
     implementation in the extension and clients.
 
+### 5.2 Controlled human-reply channel (M2, `humanReply`)
+
+- **Background (S0 conclusion)**: `vscode.chat.requestHandler` and
+  `vscode.chat.sendRequest` do **not** exist in the current VS Code/Copilot version,
+  so full silent capture of panel replies is infeasible; `visible` two-way human
+  replies therefore use a **controlled participant channel** (S0 verified
+  `vscode.chat.createChatParticipant` ✅). Re-assess an upgrade if the host API gains
+  full capture later (never degrade to GUI automation).
+- **Participant**: the extension registers a Chat Participant `sessbridge.review`
+  (`vscode.chat.createChatParticipant`, via the chat-tool-adapter seam), with
+  instructions describing the trigger format.
+- **Trigger**: a human types `@sessbridge.review <conversationId> <reply text>` in the
+  chat panel; the handler parses `conversationId` and validates that the session
+  exists/is active (fail-close: an explicit error is shown in the panel when missing
+  or invalid — no guessing).
+- **Reply file**: `reply_<conversationId>.json` in the channel directory (runtime file:
+  UTF-8 without BOM + LF, atomic write via temp file + rename; same directory and
+  conventions as `cmd_/res_/diag_/history_`):
+
+```json
+{
+  "schemaVersion": "1",
+  "conversationId": "prfrail-review-1",
+  "turnId": 3,
+  "humanReply": "approved",
+  "requestId": "sess-... (if correlateable, otherwise empty)",
+  "reviewedAt": "2026-09-05T00:00:00Z",
+  "extensionVersion": "0.1.0"
+}
+```
+
+- **Consumption**: `wait --conversation-id <cid>` (M2 semantics) polls and reads this
+  file and backfills the receipt's `humanReply`; `--keep` retains it, default deletes
+  after read. The `reply` subcommand semantics stay unchanged (v1 pass-through).
+- **Lifecycle**: same retention as receipts (default 24h), reclaimed by the extension's
+  stale cleanup; panel replies are never posted into the single-slot `res_<pid>.json`
+  to avoid racing with concurrent receipts.
+- **Boundary**: produced only by `visible` two-way turns; silent has no human
+  participation. Content follows the caller-convention security policy (no redaction,
+  verbatim pass-through).
+- **Acceptance**: human types `@sessbridge.review <cid> <reply>` in the panel →
+  `reply_<cid>.json` appears → client `wait --conversation-id <cid>` receives a non-empty
+  `humanReply` → human review/confirmation end-to-end PASS.
+
 ## 6. Legacy protocol compatibility mode
 
 - Compatibility identification: `legacy=true`, or channel files use whois old names
@@ -384,8 +429,8 @@ Field contract:
 
 ## 11. Open questions
 
-1. The concrete dependency for `visible` two-way human-reply capture (chat participant
-   event vs panel polling) — decided at S0.
+1. `visible` two-way human-reply capture (decided: S0 conclusion → controlled
+   `@sessbridge.review` participant channel, see §5.2).
 2. Default channel directory location and multi-user isolation details — decided at S0/M1.
 3. Python client package name (PyPI `sessbridge` pending confirmation) and distribution channel.
 4. whois-side switch timing (M4) and how long the old implementation is retained.

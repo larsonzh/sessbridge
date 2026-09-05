@@ -5,7 +5,8 @@
 > 状态：Draft（草案，v1.0.0，2026-09-04）。本文定义 SessionBridge 的通道协议 I 版：VS Code
 > Copilot Chat 与外部自动化之间**会话级双向**交互的本地文件/IPC 契约。
 >
-> 修订（2026-09-05）：增补 §5.1 静默会话历史（silent 多轮上下文）契约。
+> 修订（2026-09-05）：增补 §5.1 静默会话历史（silent 多轮上下文）契约；
+> 增补 §5.2 人工回复受控通道（M2 `humanReply`）契约。
 >
 > 来源与继承：脱胎于 whois 项目 `tools/test/` 的 IPC Chat Sender（`vscode-chat-sender` 扩展、
 > `Send-IpcChatMessage.ps1`、`ipc_chat_sender.py`、`install_ipc_chat_extension.ps1` 与
@@ -261,6 +262,41 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
   - 冻结本节规范后，依次构建黄金样例（多轮事实引用/重试防重/失败回滚/截断回显）与契约测试，
     再行进入扩展端与客户端实现。
 
+### 5.2 人工回复受控通道（M2，`humanReply`）
+
+- **背景（S0 结论）**：`vscode.chat.requestHandler` 与 `vscode.chat.sendRequest` 在当前
+  VS Code/Copilot 版本**不存在**，无法全量静默捕获面板回复；因此 `visible` 双向的人工回复
+  采用**受控 participant 通道**（S0 已验证 `vscode.chat.createChatParticipant` ✅）。
+  未来若宿主 API 提供全量捕获能力，再评估升级（不退化为 GUI 自动化）。
+- **参与方**：扩展注册 Chat Participant `sessbridge.review`
+  （`vscode.chat.createChatParticipant`，经聊天工具适配器接缝），提示语说明触发格式。
+- **触发**：人工在聊天面板输入
+  `@sessbridge.review <conversationId> <回复内容>`；handler 解析 `conversationId` 并校验
+  该会话存在/活跃（fail-close：未提供或无效时在面板给出明确错误提示，不做猜测关联）。
+- **回复文件**：通道目录内 `reply_<conversationId>.json`（运行时文件：UTF-8 无 BOM + LF，
+  原子写（临时文件 + rename）；与 `cmd_/res_/diag_/history_` 同目录同约定）：
+
+```json
+{
+  "schemaVersion": "1",
+  "conversationId": "prfrail-review-1",
+  "turnId": 3,
+  "humanReply": "同意",
+  "requestId": "sess-...（若可关联，否则空串）",
+  "reviewedAt": "2026-09-05T00:00:00Z",
+  "extensionVersion": "0.1.0"
+}
+```
+
+- **消费**：`wait --conversation-id <cid>`（M2 语义）轮询并读取该文件，回填到回执的
+  `humanReply` 字段；`--keep` 保留，默认读取后删除。`reply` 子命令语义不变（v1 透传）。
+- **生命周期**：与回执文件同保留期（默认 24h），由扩展 stale 清理统一回收；
+  面板侧回复不重复投递到 `res_<pid>.json` 单槽，避免与并发回执竞争。
+- **边界**：仅 `visible` 双向回合产生；silent 无人工参与。内容仍执行“调用方约定”安全策略
+  （扩展不做脱敏，原样透传）。
+- **验收**：人工面板输入 `@sessbridge.review <cid> <回复>` → `reply_<cid>.json` 出现 →
+  客户端 `wait --conversation-id <cid>` 拿到 `humanReply` 非空 → 人工审核/确认端到端 PASS。
+
 ## 6. 旧协议兼容模式
 
 - 兼容识别：`legacy=true` 或通道文件使用 whois 旧名
@@ -313,7 +349,8 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 
 ## 11. 开放问题
 
-1. `visible` 双向的人工回复捕获具体依赖（chat participant 事件 vs 面板轮询）——S0 定。
+1. `visible` 双向的人工回复捕获（已定：S0 结论 → 受控 `@sessbridge.review` participant
+   通道，见 §5.2）。
 2. 通道目录的默认位置与多用户隔离细则——S0/M1 定。
 3. Python 客户端包名（PyPI `sessbridge` 待确认）与发布渠道。
 4. whois 侧切换时机（M4）与旧实现保留时长。

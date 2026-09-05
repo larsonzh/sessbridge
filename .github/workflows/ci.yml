@@ -36,6 +36,9 @@ jobs:
       - name: JS syntax check
         run: node --check extension/extension.js
 
+      - name: Extension history engine unit tests
+        run: node tests/test_history_engine.js
+
       - name: Python package build/install smoke (pip)
         run: |
           python -m pip install --no-deps .

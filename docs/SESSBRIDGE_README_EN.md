@@ -102,6 +102,34 @@ sh installer/uninstall-legacy.sh
 > PS1 and SH behave the same (`--force`/`--dir`; `VSCODE_EXTENSIONS_DIR` corresponds to
 > Windows' fixed `$env:USERPROFILE\.vscode\extensions` path, handled inside the `.ps1`).
 
+### Install / uninstall from release artifacts (vsix + wheel)
+
+Download `sessbridge-<version>.vsix` and `sessbridge-<version>-py3-none-any.whl` from
+[GitHub Releases](https://github.com/larsonzh/sessbridge/releases) (verify with
+`SHA256SUMS`) — no source checkout needed:
+
+```powershell
+# --- VS Code extension (.vsix) ---
+# Install (local dist/ or a downloaded .vsix)
+code --install-extension sessbridge-0.1.0.vsix
+# Uninstall (extension id = <publisher>.<name>)
+code --uninstall-extension larsonzh.sessbridge
+
+# --- Python client (wheel) ---
+python -m pip install sessbridge-0.1.0-py3-none-any.whl
+# Verify (console script needs the Scripts dir on PATH; otherwise use python -m)
+sessbridge --help
+python -m sessbridge --help
+# Uninstall
+python -m pip uninstall sessbridge
+```
+
+> The wheel is stdlib-only with no third-party dependencies (Python 3.8+);
+> the vsix can also be installed from the VS Code UI:
+> Extensions → `...` → **Install from VSIX...**.
+
+### Usage (following sections)
+
 ## Usage
 
 ### Python (primary)

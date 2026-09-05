@@ -100,6 +100,33 @@ sh installer/uninstall-legacy.sh
 > PS1 与 SH 行为一致（`--force`/`--dir`；`VSCODE_EXTENSIONS_DIR` 对应 Windows 的
 > `$env:USERPROFILE\.vscode\extensions` 固定路径，由 `.ps1` 内部处理）。
 
+### 从发布物安装 / 卸载（vsix + wheel）
+
+从 [GitHub Releases](https://github.com/larsonzh/sessbridge/releases) 下载
+`sessbridge-<version>.vsix` 与 `sessbridge-<version>-py3-none-any.whl`（用 `SHA256SUMS`
+校验），无需源码仓库即可安装：
+
+```powershell
+# --- VS Code 扩展（.vsix） ---
+# 安装（本仓库 dist/ 或已下载的 .vsix 均可）
+code --install-extension sessbridge-0.1.0.vsix
+# 卸载（扩展 ID = <publisher>.<name>）
+code --uninstall-extension larsonzh.sessbridge
+
+# --- Python 客户端（wheel） ---
+python -m pip install sessbridge-0.1.0-py3-none-any.whl
+# 验证（控制台脚本需 Scripts 目录在 PATH；否则用 python -m）
+sessbridge --help
+python -m sessbridge --help
+# 卸载
+python -m pip uninstall sessbridge
+```
+
+> wheel 仅标准库、无第三方依赖（Python 3.8+）；VS Code UI 也可安装 vsix：
+> Extensions → `...` → **Install from VSIX...**。
+
+### 使用手册（后续章节）
+
 ## 使用方法
 
 ### Python（主实现）

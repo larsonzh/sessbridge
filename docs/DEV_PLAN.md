@@ -103,4 +103,7 @@ sessbridge/
     约定读取后清理）
   - 隔离：旧 `vscode-chat-sender` 已卸载并重启 VS Code，回执归因无歧义
 - [x] M2 会话回合（S0 结论后：§5.1 silent 多轮 + §5.2 `@sbr-review` 人工回复，端到端均 PASS）
-- [ ] M3 正式发布（vsix + 客户端包 + SHA256 + 兼容矩阵 + CI 徽章）
+- [x] M3 正式发布（2026-09-05：vsix `sessbridge-0.1.0.vsix`（16.9 KB）+ Python wheel
+  `sessbridge-0.1.0-py3-none-any.whl`（11.4 KB）本地构建 + `pip install` 导入冒烟 + 生成
+  `dist/SHA256SUMS`；CI 三平台矩阵 + vsix/wheel 发布物 job + 运行态 smoke 已在 CI 配置；
+  README 添加 CI 徽章；兼容矩阵含 S0/M1/M2/§5.1/§5.2 全量结论）

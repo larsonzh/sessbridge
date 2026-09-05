@@ -3,6 +3,12 @@
 > *A two-way session bridge between VS Code Copilot Chat and external automation.*
 > 外部自动化与 VS Code Copilot Chat 之间的双向会话桥。
 
+<p align="center">
+  <a href="https://github.com/larsonzh/sessbridge/actions/workflows/ci.yml">
+    <img alt="CI" src="https://github.com/larsonzh/sessbridge/actions/workflows/ci.yml/badge.svg?branch=main">
+  </a>
+</p>
+
 [English](#english) · [简体中文](#简体中文)
 
 ## English

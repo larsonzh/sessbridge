@@ -117,4 +117,7 @@ sessbridge/
     receipt attribution is unambiguous
 - [x] M2 session turns (after S0 conclusions: §5.1 silent multi-turn + §5.2
   `@sbr-review` human reply, both end-to-end PASS)
-- [ ] M3 official release (vsix + client package + SHA256 + compatibility matrix + CI badges)
+- [x] M3 official release (2026-09-05: local build of vsix `sessbridge-0.1.0.vsix` (16.9 KB) +
+  Python wheel `sessbridge-0.1.0-py3-none-any.whl` (11.4 KB) + `pip install` import smoke +
+  `dist/SHA256SUMS`; CI three-platform matrix + vsix/wheel artifact job + real runtime smoke
+  configured; README CI badge added; capability matrix covers S0/M1/M2/§5.1/§5.2)

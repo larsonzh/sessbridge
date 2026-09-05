@@ -4,7 +4,9 @@
 
 ## English
 
-File-based two-way IPC to Copilot Chat.  See
+File-based two-way IPC to Copilot Chat.  See the
+[user guide](https://github.com/larsonzh/sessbridge/blob/main/docs/SESSBRIDGE_README_EN.md)
+and the
 [RFC-sessbridge-channel-protocol-v1_EN.md](https://github.com/larsonzh/sessbridge/blob/main/docs/RFC-sessbridge-channel-protocol-v1_EN.md).
 (Repo: https://github.com/larsonzh/sessbridge )
 
@@ -25,7 +27,9 @@ Install: `powershell -File installer\install.ps1 -Force` from repo root.
 
 ## 简体中文
 
-基于文件通道的 VS Code Copilot Chat 双向 IPC。协议见
+基于文件通道的 VS Code Copilot Chat 双向 IPC。使用指南见
+[SESSBRIDGE_README.md](https://github.com/larsonzh/sessbridge/blob/main/docs/SESSBRIDGE_README.md)，
+协议见
 [RFC-sessbridge-channel-protocol-v1.md](https://github.com/larsonzh/sessbridge/blob/main/docs/RFC-sessbridge-channel-protocol-v1.md)。
 （仓库：https://github.com/larsonzh/sessbridge ）
 

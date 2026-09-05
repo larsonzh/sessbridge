@@ -78,11 +78,12 @@ sh client/sh/sessbridge.sh --help
 
 Supports `--mode/--model/--request-id/--target-pid/--channel-dir/--timeout/
 --poll-interval/--keep/--json-output/--legacy/--priority/--auto-escalate/
---lm-response-timeout-ms/--conversation-id/--turn-id/--discover`.
+--lm-response-timeout-ms/--conversation-id/--turn-id/--reset-history/
+--no-compress/--discover`.
 Also accepts **PowerShell-style parameters**: `-Message/-Mode/-Model/-RequestId/
 -TargetPid/-ChannelDir/-TimeoutSec/-PollIntervalMs/-KeepTempFiles/
 -JsonOutput/-Legacy/-Priority/-AutoEscalate/-LmResponseTimeoutMs/
--ConversationId/-TurnId/-DiscoverModels` (values are case-insensitive).
+-ConversationId/-TurnId/-ResetHistory/-NoCompress/-DiscoverModels` (values are case-insensitive).
 Channel directory defaults to `$TMPDIR/sessbridge` (override
 `SESSBRIDGE_CHANNEL_DIR`); PID resolution order `--target-pid` →
 `$VSCODE_PID` → `pgrep` → `ps -W` (Git Bash); falls back to the legacy shared
@@ -174,11 +175,12 @@ sh client/sh/sessbridge.sh --help
 
 支持 `--mode/--model/--request-id/--target-pid/--channel-dir/--timeout/
 --poll-interval/--keep/--json-output/--legacy/--priority/--auto-escalate/
---lm-response-timeout-ms/--conversation-id/--turn-id/--discover`。
+--lm-response-timeout-ms/--conversation-id/--turn-id/--reset-history/
+--no-compress/--discover`。
 **同时兼容 PowerShell 风格参数**：`-Message/-Mode/-Model/-RequestId/
 -TargetPid/-ChannelDir/-TimeoutSec/-PollIntervalMs/-KeepTempFiles/
 -JsonOutput/-Legacy/-Priority/-AutoEscalate/-LmResponseTimeoutMs/
--ConversationId/-TurnId/-DiscoverModels`（值大小写不敏感）。
+-ConversationId/-TurnId/-ResetHistory/-NoCompress/-DiscoverModels`（值大小写不敏感）。
 通道目录默认 `$TMPDIR/sessbridge`（可用 `SESSBRIDGE_CHANNEL_DIR` 覆盖）；
 PID 解析顺序 `--target-pid` → `$VSCODE_PID` → `pgrep` → `ps -W`（Git Bash），
 无法解析时走 legacy 共享路径。退出码与 Python 客户端一致（0/1/2/3）。

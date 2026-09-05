@@ -1,0 +1,41 @@
+﻿{
+  "schemaVersion": "1",
+  "conversationId": "conv-audit-001",
+  "turnId": 2,
+  "updatedAt": "2026-09-04T00:00:10Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Phase 1: Initial task brief for unattended migration",
+      "requestId": "sess-req-turn-0001",
+      "turnId": 1,
+      "createdAt": "2026-09-04T00:00:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Understood. Phase 1 initiated. Status is nominal.",
+      "requestId": "sess-req-turn-0001",
+      "turnId": 1,
+      "createdAt": "2026-09-04T00:00:05Z"
+    },
+    {
+      "role": "user",
+      "content": "Report details on ticket #123",
+      "requestId": "sess-req-turn-0002",
+      "turnId": 2,
+      "createdAt": "2026-09-04T00:00:06Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Ticket #123 has been verified successfully.",
+      "requestId": "sess-req-turn-0002",
+      "turnId": 2,
+      "createdAt": "2026-09-04T00:00:10Z"
+    }
+  ],
+  "truncated": {
+    "isTruncated": false,
+    "evictedTurns": 0,
+    "evictedChars": 0
+  }
+}

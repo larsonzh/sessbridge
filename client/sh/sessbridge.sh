@@ -37,6 +37,8 @@ AUTO_ESCALATE=0
 LM_TIMEOUT_MS=0
 CONVERSATION_ID=""
 TURN_ID=""
+RESET_HISTORY=0
+NO_COMPRESS=0
 MESSAGE=""
 PRETTY=0
 
@@ -74,6 +76,8 @@ Options:
   --lm-response-timeout-ms <ms>  LM wait budget (0 = extension default)
   --conversation-id <id>     conversation context id
   --turn-id <n>              turn number (0 = new turn)
+  --reset-history            reset conversation history for this conversationId
+  --no-compress              bypass smart truncation/compression for this turn
   --discover | -d            list available LM models
 
 Environment:
@@ -197,6 +201,7 @@ pretty_receipt() {
     printf '%-16s: %s\n' ai_response "$(json_str "$file" ai_response)"
     printf '%-16s: %s\n' humanReply "$(json_str "$file" humanReply)"
     printf '%-16s: %s\n' conversationId "$(json_str "$file" conversationId)"
+    printf '%-16s: %s\n' history "$(json_raw "$file" history)"
     printf '%-16s: %s\n' error "$(json_str "$file" error)"
     printf '%-16s: %s\n' polledMs "$(json_str "$file" polledMs)"
     printf '%-16s: %s\n' extensionVersion "$(json_str "$file" extensionVersion)"
@@ -257,6 +262,8 @@ build_envelope() {
         if [ -n "$CONVERSATION_ID" ]; then printf ',"conversationId":"%s"' "$(json_escape "$CONVERSATION_ID")"; fi
         if [ -n "$TURN_ID" ]; then printf ',"turnId":%s' "$TURN_ID"; fi
         if [ "$DISCOVER" -eq 1 ]; then printf ',"discover":true'; fi
+        if [ "$RESET_HISTORY" -eq 1 ]; then printf ',"resetHistory":true'; fi
+        if [ "$NO_COMPRESS" -eq 1 ]; then printf ',"noCompress":true'; fi
         printf '}'
     }
 }
@@ -315,6 +322,8 @@ while [ "$#" -gt 0 ]; do
         -LmResponseTimeoutMs|-lm-response-timeout-ms|--lm-response-timeout-ms) shift; LM_TIMEOUT_MS="$1" ;;
         -ConversationId|-conversation-id|--conversation-id) shift; CONVERSATION_ID="$1" ;;
         -TurnId|-turn-id|--turn-id) shift; TURN_ID="$1" ;;
+        -ResetHistory|-reset-history|--reset-history) RESET_HISTORY=1 ;;
+        -NoCompress|-no-compress|--no-compress) NO_COMPRESS=1 ;;
         *)
             echo "sessbridge.sh: unknown option: $1" >&2
             exit 3

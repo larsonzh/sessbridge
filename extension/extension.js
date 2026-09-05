@@ -191,6 +191,228 @@ function replayIfCached(requestId, resFile, message) {
   return true;
 }
 
+// ---- Silent conversation history (RFC §5.1) -------------------------------
+// The history engine is active ONLY for the new protocol + a non-empty
+// conversationId.  Empty conversationId keeps the stateless legacy behavior:
+// no history files are read or written (prevents cross-request crosstalk).
+const HISTORY_MAX_TURNS = parseInt(process.env.SESSBRIDGE_HISTORY_MAX_TURNS, 10) || 20;
+const HISTORY_MAX_TOKENS = parseInt(process.env.SESSBRIDGE_HISTORY_MAX_TOKENS, 10) || 24000;
+const HISTORY_MAX_FILE_BYTES = 1 * 1024 * 1024; // 1MB per history file
+const HISTORY_ANCHOR_MAX_TOKENS = parseInt(
+  process.env.SESSBRIDGE_HISTORY_ANCHOR_MAX_TOKENS, 10) || 4000;
+const HISTORY_COMPRESS_ASSISTANT =
+  (process.env.SESSBRIDGE_HISTORY_COMPRESS_ASSISTANT || '1') !== '0';
+// Model-based middle compaction (one extra LM call) is reserved; this
+// increment keeps deterministic head/tail folding in both modes.
+const HISTORY_SUMMARIZE = (process.env.SESSBRIDGE_HISTORY_SUMMARIZE || '0') === '1';
+const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // main + archive (RFC §5.1)
+const HISTORY_ASSISTANT_COMPRESS_CHARS = 2000;
+const HISTORY_ASSISTANT_HEAD = 200;
+const HISTORY_ASSISTANT_TAIL = 500;
+
+function sanitizeConversationId(cid) {
+  const raw = String(cid || '');
+  const safe = raw.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80);
+  if (safe !== raw) {
+    // Path-unsafe ids get a deterministic suffix so two distinct ids
+    // can never collide on the same file.
+    let h = 0;
+    for (let i = 0; i < raw.length; i++) { h = ((h << 5) - h + raw.charCodeAt(i)) | 0; }
+    return safe + '-' + (h >>> 0).toString(16);
+  }
+  return safe;
+}
+
+function historyFilePath(cid) {
+  return path.join(channelDir, 'history_' + sanitizeConversationId(cid) + '.json');
+}
+
+function historyArchivePath(cid) {
+  return path.join(channelDir, 'history_' + sanitizeConversationId(cid) + '.archive.json');
+}
+
+function estimateTokens(text) {
+  return Math.ceil(String(text || '').length / 4); // conservative chars/4
+}
+
+// Deterministic head/tail fold (no extra LM call).
+function foldLongText(text, head, tail, marker) {
+  const s = String(text || '');
+  if (s.length <= head + tail) { return s; }
+  return s.slice(0, head) + marker + s.slice(-tail);
+}
+
+// Re-seal an unclosed ``` fence so a truncated assistant message can never
+// leave the model with dangling markdown (syntax-hallucination guard).
+function sealCodeFences(text) {
+  let s = String(text || '');
+  const fences = (s.match(/```/g) || []).length;
+  if (fences % 2 === 1) { s = s + '\n```'; }
+  return s;
+}
+
+function compressAssistantText(text) {
+  let s = String(text || '');
+  if (s.length > HISTORY_ASSISTANT_COMPRESS_CHARS) {
+    s = foldLongText(s, HISTORY_ASSISTANT_HEAD, HISTORY_ASSISTANT_TAIL,
+      '\n...[truncated]...\n');
+    s = sealCodeFences(s);
+  }
+  return s;
+}
+
+function newHistory(cid) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    conversationId: cid,
+    turnId: 0,
+    updatedAt: new Date().toISOString(),
+    messages: [],
+    truncated: { isTruncated: false, evictedTurns: 0, evictedChars: 0 },
+  };
+}
+
+function loadHistory(cid) {
+  const f = historyFilePath(cid);
+  try {
+    if (!fs.existsSync(f)) { return newHistory(cid); }
+    const data = JSON.parse(fs.readFileSync(f, 'utf-8'));
+    if (!data || typeof data !== 'object' || !Array.isArray(data.messages)) {
+      return newHistory(cid);
+    }
+    return data;
+  } catch (_) {
+    return newHistory(cid);
+  }
+}
+
+function saveHistory(cid, hist) {
+  hist.updatedAt = new Date().toISOString();
+  writeResult(historyFilePath(cid), hist);
+}
+
+function deleteHistory(cid) {
+  try { fs.unlinkSync(historyFilePath(cid)); } catch (_) {}
+  try { fs.unlinkSync(historyArchivePath(cid)); } catch (_) {}
+}
+
+function appendArchive(cid, evicted) {
+  if (!evicted || evicted.length === 0) { return; }
+  let archive = [];
+  const f = historyArchivePath(cid);
+  try {
+    if (fs.existsSync(f)) { archive = JSON.parse(fs.readFileSync(f, 'utf-8')); }
+  } catch (_) {}
+  if (!Array.isArray(archive)) { archive = []; }
+  writeResult(f, archive.concat(evicted));
+}
+
+// Head + tail eviction: protect the anchor (first user message + its
+// assistant reply), then drop oldest non-anchor messages until the
+// turn/token/size budgets are met.  Eviction is recorded in hist.truncated
+// and archived (never silently lost).
+function anchorEndIndex(hist) {
+  const msgs = hist.messages || [];
+  if (msgs.length >= 2 && msgs[0].role === 'user' && msgs[1].role === 'assistant') {
+    return 2;
+  }
+  return msgs.length >= 1 ? 1 : 0;
+}
+
+function estimateMessagesBytes(msgs) {
+  try { return Buffer.byteLength(JSON.stringify(msgs), 'utf-8'); } catch (_) { return 0; }
+}
+
+function applyHistoryCaps(hist) {
+  if (!hist || !Array.isArray(hist.messages)) { return hist; }
+  const msgs = hist.messages;
+  const anchorEnd = anchorEndIndex(hist);
+  let totalTokens = 0;
+  for (const m of msgs) { totalTokens += estimateTokens(m.content); }
+  const overBudget = () =>
+    msgs.length > HISTORY_MAX_TURNS ||
+    totalTokens > HISTORY_MAX_TOKENS ||
+    estimateMessagesBytes(msgs) > HISTORY_MAX_FILE_BYTES;
+  const evicted = [];
+  while (msgs.length > anchorEnd && overBudget()) {
+    const removed = msgs.splice(anchorEnd, 1)[0];
+    if (removed) {
+      evicted.push(removed);
+      totalTokens -= estimateTokens(removed.content);
+    }
+  }
+  if (evicted.length > 0) {
+    hist.truncated = hist.truncated ||
+      { isTruncated: false, evictedTurns: 0, evictedChars: 0 };
+    hist.truncated.isTruncated = true;
+    hist.truncated.evictedTurns += evicted.length;
+    let chars = 0;
+    for (const e of evicted) { chars += String(e.content || '').length; }
+    hist.truncated.evictedChars += chars;
+    appendArchive(hist.conversationId, evicted);
+  }
+  return hist;
+}
+
+function historyStatsOf(hist) {
+  if (!hist) { return undefined; }
+  let tokens = 0;
+  for (const m of (hist.messages || [])) { tokens += estimateTokens(m.content); }
+  return {
+    totalTurns: Number(hist.turnId) || 0,
+    inputTokensEst: tokens,
+    isTruncated: !!(hist.truncated && hist.truncated.isTruncated),
+    evictedTurns: (hist.truncated && hist.truncated.evictedTurns) || 0,
+  };
+}
+
+// Assemble the full messages array: history (user/assistant pairs) + the
+// current user message.
+function buildLmMessages(hist, cmd) {
+  const msgs = [];
+  for (const m of (hist.messages || [])) {
+    if (m.role === 'assistant') {
+      msgs.push(vscode.LanguageModelChatMessage.Assistant(m.content));
+    } else {
+      msgs.push(vscode.LanguageModelChatMessage.User(m.content));
+    }
+  }
+  msgs.push(vscode.LanguageModelChatMessage.User(cmd.message));
+  return msgs;
+}
+
+// Atomic commit (RFC §5.1): append this turn ONLY on a successful response.
+// Idempotency: a requestId already present is never re-appended (retry dedup).
+function commitHistoryTurn(hist, cmd, assistantText, cid) {
+  if (!hist) { return; }
+  const already = hist.messages.some(m => m.requestId === cmd.requestId);
+  if (already) { return; }
+  const turnNo = cmd.turnId !== undefined ? cmd.turnId + 1
+    : (Number(hist.turnId) || 0) + 1;
+  let userContent = cmd.message;
+  // Anchor self-defense: an over-long task brief is folded before storage
+  // so dynamic turns always keep >= 60% of the budget.
+  if (hist.messages.length === 0 &&
+      estimateTokens(userContent) > HISTORY_ANCHOR_MAX_TOKENS) {
+    userContent = foldLongText(userContent, HISTORY_ANCHOR_MAX_TOKENS * 2,
+      HISTORY_ANCHOR_MAX_TOKENS, '\n...[brief condensed]...\n');
+  }
+  let assistantContent = String(assistantText || '');
+  if (HISTORY_COMPRESS_ASSISTANT && !cmd.noCompress) {
+    assistantContent = compressAssistantText(assistantContent);
+  }
+  hist.messages.push({
+    role: 'user', content: userContent, requestId: cmd.requestId,
+    turnId: turnNo, createdAt: new Date().toISOString(),
+  });
+  hist.messages.push({
+    role: 'assistant', content: assistantContent, requestId: cmd.requestId,
+    turnId: turnNo, createdAt: new Date().toISOString(),
+  });
+  hist.turnId = turnNo;
+  applyHistoryCaps(hist);
+}
+
 // ---- Command normalization -------------------------------------------------
 // Returns a normalized command object or null.  `isLegacyFile` pins the
 // response schema to the legacy shape so whois clients keep working.
@@ -224,6 +446,8 @@ function normalizeCommand(raw, isLegacyFile) {
       ? raw.lm_response_timeout_ms : undefined,
     conversationId: raw.conversationId !== undefined ? String(raw.conversationId) : '',
     turnId: typeof raw.turnId === 'number' ? raw.turnId : undefined,
+    resetHistory: raw.resetHistory === true,
+    noCompress: raw.noCompress === true,
     targetPid: typeof raw.targetPid === 'number' ? raw.targetPid : undefined,
   };
 }
@@ -342,7 +566,21 @@ async function sendViaLmApi(cmd, resPath, legacy) {
     };
 
     const model = pickModel(allModels, cmd.model);
-    const userMessage = vscode.LanguageModelChatMessage.User(cmd.message);
+    // RFC §5.1: history engine active only for new protocol + non-empty
+    // conversationId; empty keeps the stateless single-shot behavior.
+    const historyActive = !legacy && !!cmd.conversationId &&
+      String(cmd.conversationId).trim().length > 0;
+    let hist = null;
+    if (historyActive) {
+      if (cmd.resetHistory) { deleteHistory(cmd.conversationId); }
+      hist = loadHistory(cmd.conversationId);
+    }
+    let messages;
+    if (historyActive && hist) {
+      messages = buildLmMessages(hist, cmd);
+    } else {
+      messages = [vscode.LanguageModelChatMessage.User(cmd.message)];
+    }
     const requestOptions = {};
     if (cmd.modelOptions && Object.keys(cmd.modelOptions).length > 0) {
       requestOptions.modelOptions = cmd.modelOptions;
@@ -350,7 +588,7 @@ async function sendViaLmApi(cmd, resPath, legacy) {
     let response;
     try {
       response = await withTimeout(
-        ADAPTER.sendLm(model, [userMessage], requestOptions), responseTimeoutMs);
+        ADAPTER.sendLm(model, messages, requestOptions), responseTimeoutMs);
     } catch (err) {
       if (err && err.__timeout) {
         // Provider never answered inside the budget — write an explicit
@@ -399,12 +637,19 @@ async function sendViaLmApi(cmd, resPath, legacy) {
         ai_response_truncated: truncated || undefined,
       }), cmd.requestId, cmd.message);
     } else {
-      writeReceipt(resPath, newResponse(cmd, 'ok', {
+      const okExtra = {
         response: aiResponse || '',
         modeUsed: 'silent',
         model: { name: model.name, vendor: model.vendor, id: model.id },
         aiResponseTruncated: truncated || undefined,
-      }), cmd.requestId, cmd.message);
+      };
+      if (historyActive && hist) {
+        // Atomic commit only on success; failed turns are never committed.
+        commitHistoryTurn(hist, cmd, aiResponse || '', cmd.conversationId);
+        saveHistory(cmd.conversationId, hist);
+        okExtra.history = historyStatsOf(hist);
+      }
+      writeReceipt(resPath, newResponse(cmd, 'ok', okExtra), cmd.requestId, cmd.message);
     }
     return true;
   } catch (_) {
@@ -619,7 +864,11 @@ function cleanupStaleFiles() {
     for (const f of targets) {
       try {
         const st = fs.statSync(f);
-        if (now - st.mtimeMs > STALE_FILE_MS) {
+        // History files (history_*.json / .archive.json) follow the RFC §5.1
+        // 7-day retention; everything else keeps the 24h contract.
+        const isHistory = path.basename(f).indexOf('history_') === 0;
+        const retentionMs = isHistory ? HISTORY_RETENTION_MS : STALE_FILE_MS;
+        if (now - st.mtimeMs > retentionMs) {
           fs.unlinkSync(f);
           removed++;
         }
@@ -655,6 +904,14 @@ function probeChatApi() {
     lmKeys: vscode.lm ? Object.keys(vscode.lm) : undefined,
     hasSelectChatModels: typeof vscode.lm !== 'undefined' && typeof vscode.lm.selectChatModels === 'function',
     sessionId: vscode.env.sessionId ? 'has_session' : 'no_session',
+    historyConfig: {
+      maxTurns: HISTORY_MAX_TURNS,
+      maxTokens: HISTORY_MAX_TOKENS,
+      maxFileBytes: HISTORY_MAX_FILE_BYTES,
+      anchorMaxTokens: HISTORY_ANCHOR_MAX_TOKENS,
+      compressAssistant: HISTORY_COMPRESS_ASSISTANT,
+      summarize: HISTORY_SUMMARIZE,
+    },
   };
   try { probe.appName = vscode.env.appName; } catch (_) {}
   try { probe.appHost = vscode.env.appHost; } catch (_) {}

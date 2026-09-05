@@ -14,6 +14,9 @@ and the
   `cmd_<pid>.json` / `res_<pid>.json` / `diag_<pid>.json`.
 - Legacy channel (whois compat): `%TEMP%\vscode_chat_send_cmd_<pid>.json` etc.
 - Modes: `visible` (chat panel), `silent` (vscode.lm), `auto`.
+- Silent conversation history (RFC §5.1): per-`conversationId` multi-turn
+  context (`history_<id>.json`, head+tail eviction, receipt `history` metrics;
+  empty id stays stateless).
 - Multi-instance routing: only handles `cmd_<pid>` where `pid == process.ppid`.
 - S0 capability probe: writes `diag_<pid>.json` + `diag_<pid>-lm.json` on activate.
 - Chat tool adapter: default `copilot` (switch via `SESSBRIDGE_CHAT_TOOL`);
@@ -37,6 +40,8 @@ Install: `powershell -File installer\install.ps1 -Force` from repo root.
   `cmd_<pid>.json` / `res_<pid>.json` / `diag_<pid>.json`。
 - 旧通道（whois 兼容）：`%TEMP%\vscode_chat_send_cmd_<pid>.json` 等。
 - 模式：`visible`（聊天面板）、`silent`（vscode.lm）、`auto`。
+- 静默会话历史（RFC §5.1）：按 `conversationId` 维护多轮上下文
+  （`history_<id>.json`，head+tail 剔除、回执 `history` 健康度；空 id 保持无状态）。
 - 多实例路由：仅处理 `cmd_<pid>` 中 `pid == process.ppid` 的实例文件。
 - S0 能力探针：激活时写 `diag_<pid>.json` + `diag_<pid>-lm.json`。
 - 聊天工具适配器：默认 `copilot`（`SESSBRIDGE_CHAT_TOOL` 可切换），

@@ -412,6 +412,78 @@ class ContractTestCase(unittest.TestCase):
         leftovers = [n for n in os.listdir(self.channel) if n.startswith('cmd_') and '.tmp-' in n]
         self.assertEqual(leftovers, [])
 
+    # ---- silent history contract (§5.1) ---------------------------------
+    def test_silent_history_envelope_reset_and_no_compress(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        snap = []
+        mock = MockReceiver(cmd_file, res_file, ok_silent, snap)
+        mock.start()
+        code, _ = self.run_client([
+            'send', '--message', 'reset and start fresh',
+            '--mode', 'silent',
+            '--priority', 'normal',
+            '--conversation-id', 'conv-audit-001',
+            '--turn-id', '0',
+            '--reset-history',
+            '--no-compress',
+            '--model', 'DeepSeek V4 Flash',
+            '--timeout', '90',
+            '--lm-response-timeout-ms', '180000',
+            '--request-id', 'sess-0123456789abcdef0123456789abcdef',
+        ])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(snap), 1)
+        env = snap[0]
+        self.assertIs(env.get('resetHistory'), True)
+        self.assertIs(env.get('noCompress'), True)
+        self.assertEqual(env.get('conversationId'), 'conv-audit-001')
+        self.assertEqual(env.get('turnId'), 0)
+        golden = load_golden('cmd_silent_history_reset.new.json')
+        self.assertEqual(sorted(env.keys()), sorted(golden.keys()))
+
+    def test_silent_history_receipt_carries_history_health_metadata(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        mock = MockReceiver(cmd_file, res_file, self._golden_factory('res_ok.silent_history.new.json'))
+        mock.start()
+        code, out = self.run_client([
+            'send', '--message', 'status check',
+            '--mode', 'silent',
+            '--conversation-id', 'conv-audit-001',
+            '--json-output',
+        ])
+        self.assertEqual(code, 0)
+        receipt = json.loads(out)
+        self.assertEqual(receipt['status'], 'ok')
+        self.assertEqual(receipt['conversationId'], 'conv-audit-001')
+        self.assertIn('history', receipt)
+        history = receipt['history']
+        self.assertEqual(history['totalTurns'], 1)
+        self.assertEqual(history['inputTokensEst'], 1200)
+        self.assertIs(history['isTruncated'], False)
+        self.assertEqual(history['evictedTurns'], 0)
+
+    def test_history_sample_structure_matches_contract(self):
+        sample = load_golden('history_sample.json')
+        self.assertEqual(sample.get('schemaVersion'), '1')
+        self.assertEqual(sample.get('conversationId'), 'conv-audit-001')
+        self.assertIsInstance(sample.get('turnId'), int)
+        self.assertIn('updatedAt', sample)
+        self.assertIsInstance(sample.get('messages'), list)
+        self.assertGreater(len(sample['messages']), 0)
+        for msg in sample['messages']:
+            self.assertIn(msg.get('role'), ('user', 'assistant'))
+            self.assertTrue(bool(msg.get('content')))
+            self.assertTrue(bool(msg.get('requestId')))
+            self.assertIsInstance(msg.get('turnId'), int)
+            self.assertTrue(bool(msg.get('createdAt')))
+        self.assertIn('truncated', sample)
+        trunc = sample['truncated']
+        self.assertIn('isTruncated', trunc)
+        self.assertIn('evictedTurns', trunc)
+        self.assertIn('evictedChars', trunc)
+
 
 class PowerShellParityTestCase(unittest.TestCase):
     """Drives sessbridge.ps1 through the same mock-receiver harness
@@ -482,6 +554,30 @@ class PowerShellParityTestCase(unittest.TestCase):
         self.assertEqual(len(snap), 1)
         self.assertIn('turnId', snap[0])
         self.assertEqual(snap[0]['turnId'], 0)
+
+    def test_ps_silent_history_envelope_parity(self):
+        cmd_file = os.path.join(self.channel, 'cmd_%d.json' % FAKE_PID)
+        res_file = os.path.join(self.channel, 'res_%d.json' % FAKE_PID)
+        snap = []
+        mock = MockReceiver(cmd_file, res_file, ok_silent, snap, timeout=self.PS_MOCK_TIMEOUT)
+        mock.start()
+        proc = self.run_ps([
+            '-Message', 'ps history turn',
+            '-Mode', 'Silent',
+            '-ConversationId', 'conv-audit-001',
+            '-TurnId', '0',
+            '-ResetHistory',
+            '-NoCompress',
+            '-TimeoutSec', '15',
+        ], timeout=self.PS_SUBPROCESS_TIMEOUT)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(len(snap), 1)
+        env = snap[0]
+        self.assertEqual(env.get('mode'), 'silent')
+        self.assertEqual(env.get('conversationId'), 'conv-audit-001')
+        self.assertEqual(env.get('turnId'), 0)
+        self.assertIs(env.get('resetHistory'), True)
+        self.assertIs(env.get('noCompress'), True)
 
 
 if __name__ == '__main__':

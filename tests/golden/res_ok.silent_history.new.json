@@ -1,0 +1,26 @@
+﻿{
+  "schemaVersion": "1",
+  "requestId": "sess-0123456789abcdef0123456789abcdef",
+  "status": "ok",
+  "mode": "silent",
+  "response": "The status is nominal.",
+  "humanReply": "",
+  "conversationId": "conv-audit-001",
+  "turnId": 1,
+  "history": {
+    "totalTurns": 1,
+    "inputTokensEst": 1200,
+    "isTruncated": false,
+    "evictedTurns": 0
+  },
+  "error": "",
+  "polledMs": 1234,
+  "extensionVersion": "0.1.0",
+  "finishedAt": "2026-09-04T00:00:05Z",
+  "modeUsed": "silent",
+  "model": {
+    "name": "DeepSeek V4 Flash",
+    "vendor": "deepseek",
+    "id": "deepseek-v4-flash"
+  }
+}

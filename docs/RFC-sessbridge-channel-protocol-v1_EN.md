@@ -2,9 +2,13 @@
 
 > 中文版：[RFC-sessbridge-channel-protocol-v1.md](RFC-sessbridge-channel-protocol-v1.md)
 >
+> 中文版：[RFC-sessbridge-channel-protocol-v1.md](RFC-sessbridge-channel-protocol-v1.md)
+>
 > Status: Draft (v1.0.0, 2026-09-04). This document defines the SessionBridge channel
 > protocol I: the local file/IPC contract for **session-level two-way** interaction
 > between VS Code Copilot Chat and external automation.
+>
+> Revision (2026-09-05): added §5.1 silent conversation history contract.
 >
 > Origin and inheritance: derived from the whois project's `tools/test/` IPC Chat Sender
 > (`vscode-chat-sender` extension, `Send-IpcChatMessage.ps1`, `ipc_chat_sender.py`,
@@ -124,6 +128,12 @@ Field contract:
 - `timeoutMs`: caller's receipt wait limit; `lmResponseTimeoutMs`: override the
   extension-side LLM response wait for silent mode (this request only); when omitted, the
   extension default is used.
+- `resetHistory` (optional, default `false`): in silent/auto mode, explicitly clear the
+  conversation history for that `conversationId` and restart (a new session is simply a new
+  `conversationId`; this field is not needed for that).
+- `noCompress` (optional, default `false`): in silent mode, bypass truncation and
+  compression of the assistant response for this turn (essential for critical checkpoints
+  delivering diff patches, structured configs, or code generation where fragmentation is fatal).
 - Before writing the command file, the client **must first clean up stale result files for
   that requestId** (delete old results first, then write the new command — prevents
   deleting this round's fresh reply and causing a false `poll_timeout`; inherited from the
@@ -145,6 +155,12 @@ Field contract:
   "humanReply": "human reply (captured in visible two-way turns, may be empty)",
   "conversationId": "session context",
   "turnId": 1,
+  "history": {
+    "totalTurns": 1,
+    "inputTokensEst": 1200,
+    "isTruncated": false,
+    "evictedTurns": 0
+  },
   "error": "extension-side error detail",
   "polledMs": 1234,
   "extensionVersion": "x.y.z",
@@ -156,6 +172,10 @@ Field contract:
   rename); callers poll and read.
 - `humanReply` is non-empty only within `visible` two-way turns; silent has no human
   participation.
+- `history` object (optional): echoed if and only if a non-empty `conversationId` was
+  explicitly provided in silent/auto mode; reports context health metrics (`totalTurns`,
+  `inputTokensEst`, `isTruncated`, `evictedTurns`) to assist automation workflows
+  (e.g., ProofRail) in deciding when to reset context or rotate phases.
 - The receipt `status` value set is frozen at implementation time and enters the golden samples.
 
 ### 4.3 Exit-code contract (client exit codes, inherited from whois)
@@ -219,6 +239,83 @@ Field contract:
   degrade to GUI automation.
 - The compatibility matrix must record: VS Code version, Copilot extension version, LM API
   availability, chat-event availability.
+
+### 5.1 Silent conversation history (multi-turn context)
+
+- **Goal**: keep context across multiple `silent` calls (including the silent path of
+  `auto`) so the AI can reference facts from earlier turns and keep working; the `visible`
+  panel session is **isolated by default** — unaffected, no cross-contamination.
+- **Empty `conversationId` fallback semantics (pure stateless default)**:
+  - The conversation history engine is activated if and only if `conversationId` is explicitly
+    non-empty and non-blank.
+  - When omitted or passed as an empty string, calls remain **purely stateless single-turn**
+    (legacy-compatible default): neither reading nor writing any history files, completely
+    eliminating the risk of independent commands cross-polluting a shared empty history.
+- **Model and history records**:
+  - The extension maintains a per-`conversationId` history `messages[]` (each item contains
+    `role`: `user`/`assistant`, `content`: text, `requestId`: command identifier,
+    `turnId`: turn sequence number, `createdAt`: timestamp).
+  - For each history-activated silent request, the extension assembles
+    `requests = history messages + current user message` and passes it to `vscode.lm`
+    via the adapter.
+- **Atomic commit and failure isolation**:
+  - **Atomic commit**: a turn's `User` message and `Assistant` response are committed and
+    appended to `history_<conversationId>.json` if and only if the LM API completes
+    successfully with `status == "ok"`.
+  - **Failure isolation**: any unsuccessful invocation (`timeout`, `lm_api_unavailable`,
+    `extension_error`, validation failure) drops and rolls back the unfinished `User` message
+    immediately without touching the history, preventing context pollution.
+- **Idempotency against retries**:
+  - Each recorded turn binds its `requestId`. If a client retries due to transport issues
+    and the supplied `requestId` already exists in history, the extension replays the
+    existing successful receipt per §4.4 and **strictly refuses to duplicate** identical turns.
+- **Persistence and concurrency control**:
+  - Storage path: `history_<conversationId>.json` in the channel directory (runtime file:
+    UTF-8 without BOM + LF; consistent with `cmd_<pid>.json` / `res_<pid>.json` /
+    `diag_<pid>.json` — the repo BOM+LF convention does **not** apply here, because
+    Node/Python `JSON.parse`/`json.load` both reject a BOM).
+  - Schema: contains `schemaVersion: "1"`, `conversationId`, `turnId`, `updatedAt`,
+    `messages[]`, and `truncated` (`isTruncated`, `evictedTurns`, `evictedChars`).
+  - Concurrency: written atomically via temp file + replace; in-flight history reads and
+    writes for the same `conversationId` within an instance are serialized in memory.
+- **Size caps and self-defense policies** (defaults; overridable via env vars):
+  - **Anchor protection & bloat prevention**: the first user message (task brief) is
+    marked as anchor and spared from normal FIFO eviction. To prevent gigantic initial
+    briefs from choking subsequent turns, a soft cap (default 4000 tokens / 16KB) is
+    enforced; logs exceeding this are summarized before storage, reserving at least 60%
+    budget for dynamic turns.
+  - Window capacity: retain the last 20 turns by default (`SESSBRIDGE_HISTORY_MAX_TURNS=20`);
+  - Token budget: ~24000 tokens by default (`SESSBRIDGE_HISTORY_MAX_TOKENS=24000`;
+    conservative chars/4 approximation);
+  - **Smart assistant compression**: on by default (`SESSBRIDGE_HISTORY_COMPRESS_ASSISTANT=1`;
+    when `noCompress: false` and length > 2000 chars, compress to "head 200 + tail 500 +
+    `\n...[truncated]...\n`"; unclosed code blocks are automatically sealed to prevent
+    syntax hallucination; deterministic, zero extra API call);
+  - **LLM summarization**: off by default (`SESSBRIDGE_HISTORY_SUMMARIZE=0`; when enabled,
+    the middle segment is condensed into 1–2 sentences via one extra model call);
+  - Disk cap: single file ≤ 1MB.
+- **Eviction strategy (Head + Tail)**:
+  - When over budget, oldest **non-anchor** messages are evicted turn-by-turn (preserving
+    head brief + tail recent states; dropping the middle);
+  - **Non-silent eviction**: cumulative counts are tracked in `truncated` metadata and
+    echoed in receipts;
+  - Archive: evicted full messages are appended to `history_<cid>.archive.json`
+    (**not sent to the model**, offline audit only; default 7-day retention).
+- **Reset and lifecycle management**:
+  - New session: a distinct `conversationId` starts completely fresh;
+  - Explicit reset: passing `resetHistory: true` clears the history and restarts with the
+    current message as the new anchor;
+  - Client CLI tools: CLI provides explicit history utilities (status inspection,
+    snapshot export, immediate purge).
+- **Observability and receipts**:
+  - Receipts (`res_<pid>.json`) include the `history` object (§4.2) echoing `totalTurns`,
+    `inputTokensEst`, `isTruncated`, `evictedTurns`;
+  - Diagnostics (`diag_<pid>.json`) record `historyStats`.
+- **Boundaries and engineering discipline**:
+  - Physically isolated from the visible panel session;
+  - Contract freeze precedes golden samples (multi-turn referencing / retry dedup /
+    failure rollback / eviction echoing), followed by contract tests, and finally
+    implementation in the extension and clients.
 
 ## 6. Legacy protocol compatibility mode
 

@@ -95,7 +95,11 @@ param(
     # -1 = not specified (parity with Python's argparse default=None); any
     # value >= 0, including 0, is sent explicitly (see docs/RFC turnId=0 example).
     [ValidateRange(-1, 999999)]
-    [int]$TurnId = -1
+    [int]$TurnId = -1,
+
+    [switch]$ResetHistory,
+
+    [switch]$NoCompress
 )
 
 Set-StrictMode -Version Latest
@@ -264,6 +268,8 @@ function New-EnvelopePayload {
     if ($TurnId -ge 0) { $payload.turnId = $TurnId }
     if (-not [string]::IsNullOrWhiteSpace([string]$Model)) { $payload.model = $Model }
     if ($Discover) { $payload.discover = $true }
+    if ($ResetHistory) { $payload.resetHistory = $true }
+    if ($NoCompress) { $payload.noCompress = $true }
     return $payload
 }
 

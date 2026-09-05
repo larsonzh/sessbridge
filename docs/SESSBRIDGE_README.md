@@ -127,6 +127,8 @@ sh installer/uninstall-legacy.sh
 | `--lm-response-timeout-ms` | 按请求覆盖扩展侧 LM 等待（1000–3600000） | 0（用扩展默认） |
 | `--conversation-id` | 会话上下文 ID（`reply` 必填；`send` 透传） | 空 |
 | `--turn-id` | 回合号（0=新回合） | 无（透传） |
+| `--reset-history` | 显式重置并清空该会话历史（重新开始） | 关 |
+| `--no-compress` | 关键轮次跳过 assistant 输出智能压缩 | 关 |
 
 `wait` 额外支持 `--res-file <path>`（显式指定回执文件，高级）；`discover` 无需 `--message`。
 
@@ -194,6 +196,32 @@ python client\sessbridge.py wait --conversation-id conv-x --res-file "D:\tmp\res
 python client\sessbridge.py reply --message "继续" --conversation-id conv-x --turn-id 1
 ```
 
+### 静默会话历史（silent 多轮上下文，RFC §5.1）
+
+未传 `--conversation-id` 时保持**无状态单轮**（旧行为）；传入非空
+`--conversation-id` 后，扩展为该会话维护消息历史（`history_<conversationId>.json`），
+每轮 `requests = 历史 + 当前消息`，AI 可引用先前轮次事实持续工作：
+
+```powershell
+# 第 1 轮：开始新会话（turnId 0），回执携带 history 健康度
+python client\sessbridge.py send --message "第 1 轮任务简报" --mode silent `
+  --conversation-id prfrail-phase-1 --turn-id 0 --json-output
+
+# 第 2 轮：延续上下文（不必再给全量背景）
+python client\sessbridge.py send --message "基于上一步继续" --mode silent `
+  --conversation-id prfrail-phase-1 --turn-id 1 --json-output
+
+# 某阶段结束：显式重置（清空历史并以当前消息为新锚点）
+python client\sessbridge.py send --message "开始新阶段" --mode silent `
+  --conversation-id prfrail-phase-1 --reset-history --no-compress --json-output
+```
+
+- 回执 `history` 字段（`totalTurns`/`inputTokensEst`/`isTruncated`/`evictedTurns`）
+  供脚本判断上下文健康度；
+- 关键交付轮次（diff/配置/代码）加 `--no-compress` 跳过智能截断；
+- 历史默认保留 20 轮 / ~24K token / 单文件 ≤1MB，剔除保“头(锚点)+尾”、留痕并归档；
+- 换 `--conversation-id` 即开全新会话（成本最低的“重置”）。
+
 ### PowerShell（兼容层，Windows）
 
 参数集为 whois `Send-IpcChatMessage.ps1` 的**全集超集**（whois 参数全部保留，并新增
@@ -219,6 +247,8 @@ python client\sessbridge.py reply --message "继续" --conversation-id conv-x --
 | `-Legacy` | 旧协议（whois 文件名/载荷） | 关 |
 | `-ConversationId` | 会话上下文 ID | 空 |
 | `-TurnId` | 回合号（-1=未指定；0=显式首回合） | -1 |
+| `-ResetHistory` | 显式重置并清空该会话历史 | 关 |
+| `-NoCompress` | 关键轮次跳过 assistant 输出智能压缩 | 关 |
 
 ```powershell
 .\client\ps\sessbridge.ps1 -Message "你的消息"
@@ -273,6 +303,8 @@ python client\sessbridge.py reply --message "继续" --conversation-id conv-x --
 | `-LmResponseTimeoutMs` / `--lm-response-timeout-ms` | 按请求覆盖扩展侧 LM 等待 | 0 |
 | `-ConversationId` / `--conversation-id` | 会话上下文 ID | 空 |
 | `-TurnId` / `--turn-id` | 回合号（0=显式首回合） | 无 |
+| `-ResetHistory` / `--reset-history` | 显式重置并清空该会话历史 | 关 |
+| `-NoCompress` / `--no-compress` | 关键轮次跳过 assistant 输出智能压缩 | 关 |
 | `-DiscoverModels` / `--discover` / `-d` | 列出可用模型 | 关 |
 
 - PID 解析顺序：`-TargetPid` → `$VSCODE_PID` → `pgrep` → `ps -W`（Git Bash）；

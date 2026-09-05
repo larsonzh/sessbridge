@@ -129,6 +129,8 @@ Common parameters (supported by all subcommands):
 | `--lm-response-timeout-ms` | per-request override of the extension-side LM wait (1000–3600000) | 0 (extension default) |
 | `--conversation-id` | session context ID (required for `reply`; passed through by `send`) | empty |
 | `--turn-id` | turn number (0=new turn) | none (passed through) |
+| `--reset-history` | explicitly reset and clear conversation history (restart fresh) | off |
+| `--no-compress` | bypass smart compression of assistant response for critical checkpoints | off |
 
 `wait` additionally supports `--res-file <path>` (explicit receipt file, advanced);
 `discover` does not require `--message`.
@@ -197,6 +199,36 @@ python client\sessbridge.py wait --conversation-id conv-x --res-file "D:\tmp\res
 python client\sessbridge.py reply --message "继续" --conversation-id conv-x --turn-id 1
 ```
 
+### Silent conversation history (multi-turn context, RFC §5.1)
+
+Without `--conversation-id` the client stays **stateless single-turn** (legacy
+behavior).  With a non-empty `--conversation-id`, the extension maintains a
+per-session message history (`history_<conversationId>.json`) and assembles
+`requests = history + current message` on every turn, so the AI can reference
+earlier facts and keep working:
+
+```powershell
+# Turn 1: start a session (turnId 0); receipt carries history health metrics
+python client\sessbridge.py send --message "Phase 1 task brief" --mode silent `
+  --conversation-id prfrail-phase-1 --turn-id 0 --json-output
+
+# Turn 2: continue with context (no need to repeat the whole background)
+python client\sessbridge.py send --message "Continue from the previous step" --mode silent `
+  --conversation-id prfrail-phase-1 --turn-id 1 --json-output
+
+# Phase done: explicitly reset (clear history, current message becomes new anchor)
+python client\sessbridge.py send --message "Start a new phase" --mode silent `
+  --conversation-id prfrail-phase-1 --reset-history --no-compress --json-output
+```
+
+- The receipt `history` field (`totalTurns`/`inputTokensEst`/`isTruncated`/
+  `evictedTurns`) lets scripts assess context health;
+- For critical deliveries (diff/config/code) add `--no-compress` to bypass smart
+  truncation;
+- History defaults: last 20 turns / ~24K tokens / ≤1MB per file; eviction
+  preserves "head (anchor) + tail", is recorded and archived (never silent);
+- A new `--conversation-id` starts a completely fresh session (cheapest "reset").
+
 ### PowerShell (compat layer, Windows)
 
 The parameter set is a **superset of whois' `Send-IpcChatMessage.ps1`** (all whois
@@ -222,6 +254,8 @@ parameters retained, new: `ChannelDir` / `Legacy` / `ConversationId` / `TurnId`)
 | `-Legacy` | legacy protocol (whois file names/payload) | off |
 | `-ConversationId` | session context ID | empty |
 | `-TurnId` | turn number (-1=unspecified; 0=explicit first turn) | -1 |
+| `-ResetHistory` | explicitly reset and clear conversation history | off |
+| `-NoCompress` | bypass assistant response compression for critical checkpoints | off |
 
 ```powershell
 .\client\ps\sessbridge.ps1 -Message "你的消息"
@@ -277,6 +311,8 @@ parameters, values case-insensitive.
 | `-LmResponseTimeoutMs` / `--lm-response-timeout-ms` | per-request extension-side LM wait override | 0 |
 | `-ConversationId` / `--conversation-id` | session context ID | empty |
 | `-TurnId` / `--turn-id` | turn number (0=explicit first turn) | none |
+| `-ResetHistory` / `--reset-history` | explicitly reset and clear conversation history | off |
+| `-NoCompress` / `--no-compress` | bypass assistant response compression for critical checkpoints | off |
 | `-DiscoverModels` / `--discover` / `-d` | list available models | off |
 
 - PID resolution order: `-TargetPid` → `$VSCODE_PID` → `pgrep` → `ps -W` (Git Bash);

@@ -1,0 +1,17 @@
+﻿{
+  "schemaVersion": "1",
+  "requestId": "sess-0123456789abcdef0123456789abcdef",
+  "mode": "silent",
+  "priority": "normal",
+  "message": "reset and start fresh",
+  "targetPid": 424242,
+  "timeoutMs": 90000,
+  "lmResponseTimeoutMs": 180000,
+  "conversationId": "conv-audit-001",
+  "turnId": 0,
+  "resetHistory": true,
+  "noCompress": true,
+  "model": "DeepSeek V4 Flash",
+  "createdAt": "2026-09-04T00:00:00Z",
+  "legacy": false
+}

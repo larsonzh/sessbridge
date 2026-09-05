@@ -167,6 +167,10 @@ def build_new_envelope(args, request_id: str, message: str, target_pid: int,
         env['turnId'] = args.turn_id
     if args.model:
         env['model'] = args.model
+    if getattr(args, 'reset_history', False):
+        env['resetHistory'] = True
+    if getattr(args, 'no_compress', False):
+        env['noCompress'] = True
     return env
 
 
@@ -274,6 +278,7 @@ def normalize_outcome(outcome: dict) -> dict:
             'mode': outcome.get('mode') or '',
             'conversationId': outcome.get('conversationId') or '',
             'turnId': outcome.get('turnId'),
+            'history': outcome.get('history'),
             'error': outcome.get('error') or '',
             'models': outcome.get('models'),
             'model': outcome.get('model'),
@@ -386,6 +391,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help='Per-request LM response timeout (1000-3600000)')
     common.add_argument('--conversation-id', default='', help='Existing conversation context id')
     common.add_argument('--turn-id', type=int, default=None, help='Turn number (0 = new turn)')
+    common.add_argument('--reset-history', action='store_true',
+                        help='Reset conversation history for this conversationId')
+    common.add_argument('--no-compress', action='store_true',
+                        help='Bypass smart truncation/compression for this turn')
 
     sub = parser.add_subparsers(dest='command', required=True)
 

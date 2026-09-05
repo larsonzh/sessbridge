@@ -5,6 +5,8 @@
 > 状态：Draft（草案，v1.0.0，2026-09-04）。本文定义 SessionBridge 的通道协议 I 版：VS Code
 > Copilot Chat 与外部自动化之间**会话级双向**交互的本地文件/IPC 契约。
 >
+> 修订（2026-09-05）：增补 §5.1 静默会话历史（silent 多轮上下文）契约。
+>
 > 来源与继承：脱胎于 whois 项目 `tools/test/` 的 IPC Chat Sender（`vscode-chat-sender` 扩展、
 > `Send-IpcChatMessage.ps1`、`ipc_chat_sender.py`、`install_ipc_chat_extension.ps1` 与
 > `docs/IPC_CHAT_SENDER_README.md`）。whois 侧旧实现保持不动，保证其 A/B 无人值守流程
@@ -110,6 +112,10 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 - `priority=high`：打断当前 AI 工作立即发送（事件驱动票）；`normal`：排队等待（状态票）。
 - `timeoutMs`：调用方等待回执上限；`lmResponseTimeoutMs`：silent 模式下覆盖扩展侧 LLM
   响应等待（仅本次生效），未提供时用扩展侧默认。
+- `resetHistory`（可选，默认 `false`）：silent/auto 模式下显式清空该 `conversationId` 的
+  会话历史并重新开始（新会话直接用新的 `conversationId` 即可，无需该字段）。
+- `noCompress`（可选，默认 `false`）：silent 模式下跳过当前轮次对 assistant 回复的截断压缩
+  （用于交付 diff patch、结构化配置、代码生成等严禁任何断裂的关卡轮次）。
 - 写命令文件前，客户端**必须先清理该 requestId 的陈旧结果文件**（先删旧结果再写新命令，
   防止误删此轮新鲜回复导致假 `poll_timeout`——继承 whois 已验证的坑）。
 - 客户端写命令文件必须**原子写**（同目录临时文件 + rename/replace 落位），禁止直接写出
@@ -127,6 +133,12 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
   "humanReply": "人工回复（visible 双向回合时捕获，可能为空）",
   "conversationId": "session context",
   "turnId": 1,
+  "history": {
+    "totalTurns": 1,
+    "inputTokensEst": 1200,
+    "isTruncated": false,
+    "evictedTurns": 0
+  },
   "error": "extension-side error detail",
   "polledMs": 1234,
   "extensionVersion": "x.y.z",
@@ -136,6 +148,10 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 
 - 扩展进程必须**独占写**结果文件（临时文件 + 原子重命名），调用方轮询读取。
 - `humanReply` 仅在 `visible` 双向回合内非空；silent 无人工参与。
+- `history` 对象（可选）：当且仅当 silent/auto 模式下显式提供了非空 `conversationId`
+  时回显，提供上下文健康度指标（`totalTurns` 总轮数、`inputTokensEst` 估算输入 Token、
+  `isTruncated` 是否已发生剔除、`evictedTurns` 剔除轮数），供自动化流程（如 ProofRail）
+  判定是否需要上下文重置或阶段切换。
 - 回执 `status` 值集合在实现时冻结并进入黄金样例。
 
 ### 4.3 错误码契约（客户端退出码，继承 whois 契约）
@@ -185,6 +201,65 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
   若受限于宿主 API，保留“投递 + 轮询回执”单向语义，人工回复以受控回执文件补充，
   并如实记录能力矩阵，**不得**退化为 GUI 自动化。
 - 兼容矩阵必须记录：VS Code 版本、Copilot 扩展版本、LM API 可用性、聊天事件可用性。
+
+### 5.1 静默会话历史（silent 多轮上下文）
+
+- **目标**：让 `silent`（含 `auto` 的 silent 路径）多轮调用保持上下文——AI 能引用先前轮次的
+  事实继续工作；`visible` 面板会话**默认隔离**，不受影响、不互相污染。
+- **空 `conversationId` 退化语义（纯无状态防串台）**：
+  - 当且仅当 `conversationId` 显式非空且非空白时，才激活会话历史引擎。
+  - 若调用方不传或传入空字符串 `conversationId`，保持**纯无状态单次调用**（旧行为兼容），
+    既不读取也不写入任何历史文件，彻底杜绝所有无会话标记命令共享同一历史的串台风险。
+- **模型与历史记录**：
+  - 扩展按 `conversationId` 维护消息历史 `messages[]`（每项含 `role`: `user`/`assistant`、
+    `content`: 文本、`requestId`: 对应命令标识、`turnId`: 轮次号、`createdAt`: 时间戳）。
+  - 每次激活会话历史的 silent 请求，扩展组装
+    `requests = 历史 messages + 当前用户 message` 后经适配器传给 `vscode.lm`。
+- **原子提交与失败隔离原则**：
+  - **原子提交**：只有当 LM API 完整生成成功且 `status == "ok"` 时，才将该轮的 `User` 消息
+    与 `Assistant` 响应持久化追加进 `history_<conversationId>.json`。
+  - **失败不污染**：任何非成功请求（`timeout` / `lm_api_unavailable` / `extension_error` /
+    校验失败等），该轮未完成的 `User` 消息立即丢弃、回滚，严禁写入历史，确保后续轮次上下文干净。
+- **重试幂等性保证**：
+  - 历史中的每轮消息绑定 `requestId`。若客户端发生网络重试，且传入的 `requestId` 已经存在于
+    当前历史中，扩展按 §4.4 直接重放已有成功回执，**严禁向历史重复追加**相同内容。
+- **历史持久化与并发控制**：
+  - 存储路径：通道目录内 `history_<conversationId>.json`（运行时文件：UTF-8 无 BOM + LF；
+    与 `cmd_<pid>.json` / `res_<pid>.json` / `diag_<pid>.json` 一致，**不适用**仓库
+    BOM+LF 约定——Node/Python 的 `JSON.parse`/`json.load` 均拒绝 BOM）。
+  - 文件结构：含 `schemaVersion: "1"`、`conversationId`、`turnId`、`updatedAt`、
+    `messages[]`、`truncated`（含 `isTruncated`、`evictedTurns`、`evictedChars`）。
+  - 并发与原子写：同目录临时文件 + rename 替换落位；同实例内对同一 `conversationId` 的
+    历史读写操作在内存中排队串行化。
+- **大小上限与自防御策略**（默认值，可用环境变量覆盖）：
+  - **锚点保护与防膨胀**：每个会话的第一条用户消息（任务简报）标记为锚点，正常剔除时不予删除。
+    但为防止极端大简报挤占后续对话空间，锚点正文设软上限（默认 4000 token / 16KB）；超出部分
+    中间日志在沉淀入历史时提示折叠，确保至少为动态多轮预留 60% 上下文空间。
+  - 窗口容量：默认保留最近 20 轮（`SESSBRIDGE_HISTORY_MAX_TURNS=20`）；
+  - Token 预算：默认约 24000 token（`SESSBRIDGE_HISTORY_MAX_TOKENS=24000`；字符数/4 保守估算）；
+  - **智能 assistant 压缩**：默认开（`SESSBRIDGE_HISTORY_COMPRESS_ASSISTANT=1`；当
+    `noCompress: false` 且输出 > 2000 字符时压缩为“头 200 + 尾 500 + `\n...[truncated]...\n`”；
+    若包含未闭合代码块标记，自动修补闭合标记以防 LLM 语法幻觉；零额外调用、完全确定）；
+  - **LLM 摘要压缩**：默认关（`SESSBRIDGE_HISTORY_SUMMARIZE=0`；开启后中段由一次额外模型调用
+    浓缩成 1–2 句并入上下文）；
+  - 磁盘上限：单文件 ≤ 1MB。
+- **剔除策略（Head + Tail）**：
+  - 超出预算时从最旧的**非锚点**消息开始逐轮移除（保留头部任务简报 + 尾部最新工作状态，牺牲中段）；
+  - **非静默删除**：在 `truncated` 元数据中累计 `evictedTurns`/`evictedChars`，并透传回执；
+  - 归档：被剔除的完整历史增量追加至 `history_<cid>.archive.json`（**不发给模型**，仅供离线审计，
+    保留期默认 7 天）。
+- **重置与清理**：
+  - 新会话：新 `conversationId` 即全新空白会话；
+  - 显式重置：在命令中置 `resetHistory: true`，扩展清空该会话历史并以当前消息作为新锚点重启；
+  - 客户端生命周期管理：CLI 提供显式会话管理能力（支持查询/导出快照/立即清空）。
+- **可观测性与回执透出**：
+  - 回执 `res_<pid>.json` 增加 `history` 结构（见 §4.2），透出 `totalTurns`、`inputTokensEst`、
+    `isTruncated`、`evictedTurns`；
+  - 扩展诊断文件 `diag_<pid>.json` 增设 `historyStats`。
+- **边界与实现纪律**：
+  - 与 visible 面板会话严格物理隔离；
+  - 冻结本节规范后，依次构建黄金样例（多轮事实引用/重试防重/失败回滚/截断回显）与契约测试，
+    再行进入扩展端与客户端实现。
 
 ## 6. 旧协议兼容模式
 

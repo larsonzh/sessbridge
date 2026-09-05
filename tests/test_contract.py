@@ -414,7 +414,7 @@ class ContractTestCase(unittest.TestCase):
 
 
 class PowerShellParityTestCase(unittest.TestCase):
-    """Drives Send-IpcChatMessage.ps1 through the same mock-receiver harness
+    """Drives sessbridge.ps1 through the same mock-receiver harness
     used for the Python client, to catch behavior drift between the two
     implementations (docs/CODING_CONVENTIONS.md §3 '双实现防漂移').
 
@@ -422,7 +422,7 @@ class PowerShellParityTestCase(unittest.TestCase):
     """
 
     PS_EXE = shutil.which('pwsh') or shutil.which('powershell.exe') or shutil.which('powershell')
-    PS_SCRIPT = os.path.join(ROOT, 'client', 'ps', 'Send-IpcChatMessage.ps1')
+    PS_SCRIPT = os.path.join(ROOT, 'client', 'ps', 'sessbridge.ps1')
     PS_STARTUP_TIMEOUT = 120
     PS_SUBPROCESS_TIMEOUT = 180
     PS_MOCK_TIMEOUT = PS_SUBPROCESS_TIMEOUT + 60

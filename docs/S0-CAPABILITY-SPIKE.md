@@ -1,5 +1,7 @@
 ﻿# S0：VS Code Chat API 双向能力验证（Capability Spike）
 
+> English: [S0-CAPABILITY-SPIKE_EN.md](S0-CAPABILITY-SPIKE_EN.md)
+
 > 目标：验证 `visible` 双向能力（人工回复捕获）在当前 VS Code / Copilot 版本可用性，
 > 冻结模式语义，产出能力矩阵。**不可省略**（RFC §5）。
 > 降级路线：若宿主 API 受限，保留“投递 + 轮询回执”单向语义（M1 已实现），

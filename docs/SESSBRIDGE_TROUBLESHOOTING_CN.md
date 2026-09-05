@@ -1,7 +1,9 @@
 ﻿# SessionBridge 快速排障清单（CN）
 
-适用范围：`client/sessbridge.py`、`client/ps/Send-IpcChatMessage.ps1`、
-`extension/extension.js`、ProofRail 等通过 `silent` 消息层接入的调用方。
+> English: [SESSBRIDGE_TROUBLESHOOTING_EN.md](SESSBRIDGE_TROUBLESHOOTING_EN.md)
+
+适用范围：`client/sessbridge.py`、`client/ps/sessbridge.ps1`、
+`client/sh/sessbridge.sh`、`extension/extension.js`、ProofRail 等通过 `silent` 消息层接入的调用方。
 
 ## 1. 30 秒快速判定
 

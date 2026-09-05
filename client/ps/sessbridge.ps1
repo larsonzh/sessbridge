@@ -33,13 +33,13 @@
       vscode_chat_send_res_<pid>.json (or shared names when no PID).
 
 .EXAMPLE
-    .\Send-IpcChatMessage.ps1 -Message "Hello from IPC"
+    .\sessbridge.ps1 -Message "Hello from IPC"
 
 .EXAMPLE
-    .\Send-IpcChatMessage.ps1 -Message "status" -Priority normal -Mode Silent -Model "DeepSeek V4 Flash"
+    .\sessbridge.ps1 -Message "status" -Priority normal -Mode Silent -Model "DeepSeek V4 Flash"
 
 .EXAMPLE
-    .\Send-IpcChatMessage.ps1 -Message "test" -JsonOutput -KeepTempFiles
+    .\sessbridge.ps1 -Message "test" -JsonOutput -KeepTempFiles
 #>
 
 param(

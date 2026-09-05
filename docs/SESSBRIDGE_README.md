@@ -1,5 +1,7 @@
 ﻿# SessionBridge（会话桥）使用指南
 
+> English: [SESSBRIDGE_README_EN.md](SESSBRIDGE_README_EN.md)
+
 通过纯 IPC 文件通道与 VS Code Copilot Chat 进行**会话级双向**交互：
 投递消息、捕获 AI 回复（silent）、聊天面板可见投递（visible）、未来捕获人工回复（M2）。
 不依赖任何 UI 自动化（pywinauto / AHK）。
@@ -34,7 +36,7 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 |------|------|
 | `extension/package.json` / `extension.js` | VS Code 扩展清单与逻辑（聊天工具适配器） |
 | `client/sessbridge.py` | **主实现**：Python 3 CLI（send/wait/reply/discover） |
-| `client/ps/Send-IpcChatMessage.ps1` | PowerShell 兼容层（Windows，契约与 Python 一致） |
+| `client/ps/sessbridge.ps1` | PowerShell 兼容层（Windows，契约与 Python 一致） |
 | `client/sh/sessbridge.sh` | **sh 客户端**（Linux/macOS/POSIX，纯 shell；兼容 PS 与 GNU 风格参数） |
 | `pyproject.toml` | Python 客户端可安装包（pip install 后得到 `sessbridge` 命令） |
 | `installer/install.ps1` / `uninstall.ps1` | Windows 一键安装/卸载扩展 |
@@ -219,32 +221,32 @@ python client\sessbridge.py reply --message "继续" --conversation-id conv-x --
 | `-TurnId` | 回合号（-1=未指定；0=显式首回合） | -1 |
 
 ```powershell
-.\client\ps\Send-IpcChatMessage.ps1 -Message "你的消息"
-.\client\ps\Send-IpcChatMessage.ps1 -Message "状态" -Mode Silent -Model "DeepSeek V4 Flash" -JsonOutput
-.\client\ps\Send-IpcChatMessage.ps1 -Message "紧急" -Priority high
-.\client\ps\Send-IpcChatMessage.ps1 -Message "x" -DiscoverModels
-.\client\ps\Send-IpcChatMessage.ps1 -Message "x" -Legacy -JsonOutput
+.\client\ps\sessbridge.ps1 -Message "你的消息"
+.\client\ps\sessbridge.ps1 -Message "状态" -Mode Silent -Model "DeepSeek V4 Flash" -JsonOutput
+.\client\ps\sessbridge.ps1 -Message "紧急" -Priority high
+.\client\ps\sessbridge.ps1 -Message "x" -DiscoverModels
+.\client\ps\sessbridge.ps1 -Message "x" -Legacy -JsonOutput
 
 # 自定义超时/轮询（快速冒烟 / 慢速长任务）
-.\client\ps\Send-IpcChatMessage.ps1 -Message "test" -TimeoutSec 10 -PollIntervalMs 100 -JsonOutput
-.\client\ps\Send-IpcChatMessage.ps1 -Message "慢查询" -TimeoutSec 120
+.\client\ps\sessbridge.ps1 -Message "test" -TimeoutSec 10 -PollIntervalMs 100 -JsonOutput
+.\client\ps\sessbridge.ps1 -Message "慢查询" -TimeoutSec 120
 
 # 长任务：按请求覆盖扩展侧超时（无需重启 VS Code）
-.\client\ps\Send-IpcChatMessage.ps1 -Message "长任务" -Mode Silent -TimeoutSec 120 -LmResponseTimeoutMs 180000 -JsonOutput
+.\client\ps\sessbridge.ps1 -Message "长任务" -Mode Silent -TimeoutSec 120 -LmResponseTimeoutMs 180000 -JsonOutput
 
 # 模型选项（哈希表）
-.\client\ps\Send-IpcChatMessage.ps1 -Message "x" -Mode Silent -Model "DeepSeek V4 Flash" -ModelOptions @{ thinking_mode = "deep" }
+.\client\ps\sessbridge.ps1 -Message "x" -Mode Silent -Model "DeepSeek V4 Flash" -ModelOptions @{ thinking_mode = "deep" }
 
 # 保留回执文件（事后分析）
-.\client\ps\Send-IpcChatMessage.ps1 -Message "test" -KeepTempFiles -JsonOutput
+.\client\ps\sessbridge.ps1 -Message "test" -KeepTempFiles -JsonOutput
 
 # 指定实例 / 自定义通道目录 / 旧协议
-.\client\ps\Send-IpcChatMessage.ps1 -Message "hi" -TargetPid 6288
-.\client\ps\Send-IpcChatMessage.ps1 -Message "hi" -ChannelDir "D:\temp\sb"
-.\client\ps\Send-IpcChatMessage.ps1 -Message "hi" -Legacy
+.\client\ps\sessbridge.ps1 -Message "hi" -TargetPid 6288
+.\client\ps\sessbridge.ps1 -Message "hi" -ChannelDir "D:\temp\sb"
+.\client\ps\sessbridge.ps1 -Message "hi" -Legacy
 
 # 会话回合（-TurnId 0 显式首回合）
-.\client\ps\Send-IpcChatMessage.ps1 -Message "继续" -ConversationId conv-x -TurnId 1
+.\client\ps\sessbridge.ps1 -Message "继续" -ConversationId conv-x -TurnId 1
 ```
 
 ### sh 客户端（Linux / macOS / POSIX）

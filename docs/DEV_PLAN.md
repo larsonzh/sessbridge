@@ -1,5 +1,7 @@
 ﻿# SessionBridge 开发计划（Dev Plan）
 
+> English: [DEV_PLAN_EN.md](DEV_PLAN_EN.md)
+
 > 状态：进行中（2026-09-04）。权威协议：[RFC-sessbridge-channel-protocol-v1.md](RFC-sessbridge-channel-protocol-v1.md)。
 > 本文件是工程侧实施映射：把 RFC 的阶段（S0/M1/M2/M3/M4）落到具体文件与验收标准。
 
@@ -11,8 +13,9 @@ sessbridge/
   extension/          VS Code 扩展（visible/silent/auto、多实例路由、旧协议兼容、S0 能力探针）
   client/
     sessbridge.py     Python 3 跨平台 CLI（send/wait/reply/discover）
+    sessbridge.sh     POSIX sh 客户端（Linux/macOS；无 Python 依赖）
     ps/
-      Send-IpcChatMessage.ps1   PowerShell 兼容层（Windows；与 Python 契约一致）
+      sessbridge.ps1  PowerShell 兼容层（Windows；与 Python 契约一致）
   installer/
     install.ps1 / install.sh / uninstall*.ps1 / uninstall*.sh
     build-vsix.ps1 / build-vsix.sh      vsix 打包（vsce）

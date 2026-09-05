@@ -1,6 +1,27 @@
 ﻿# SessionBridge extension / 扩展（VS Code）
 
-[简体中文](#简体中文) · [English](#english)
+[English](#english) · [简体中文](#简体中文)
+
+## English
+
+File-based two-way IPC to Copilot Chat.  See
+[RFC-sessbridge-channel-protocol-v1_EN.md](https://github.com/larsonzh/sessbridge/blob/main/docs/RFC-sessbridge-channel-protocol-v1_EN.md).
+(Repo: https://github.com/larsonzh/sessbridge )
+
+- New channel: `%TEMP%\sessbridge` (override `SESSBRIDGE_CHANNEL_DIR`) —
+  `cmd_<pid>.json` / `res_<pid>.json` / `diag_<pid>.json`.
+- Legacy channel (whois compat): `%TEMP%\vscode_chat_send_cmd_<pid>.json` etc.
+- Modes: `visible` (chat panel), `silent` (vscode.lm), `auto`.
+- Multi-instance routing: only handles `cmd_<pid>` where `pid == process.ppid`.
+- S0 capability probe: writes `diag_<pid>.json` + `diag_<pid>-lm.json` on activate.
+- Chat tool adapter: default `copilot` (switch via `SESSBRIDGE_CHAT_TOOL`);
+  new tools plug in through `TOOL_ADAPTERS` — client and protocol unchanged.
+
+Install: `powershell -File installer\install.ps1 -Force` from repo root.
+
+> For now, get the VSIX extension and client scripts from the GitHub repo: https://github.com/larsonzh/sessbridge
+
+---
 
 ## 简体中文
 
@@ -20,22 +41,3 @@
 安装：仓库根目录执行 `powershell -File installer\install.ps1 -Force`。
 
 > VSIX 扩展和客户端脚本当前请到 GitHub 仓库获取：https://github.com/larsonzh/sessbridge
-
-## English
-
-File-based two-way IPC to Copilot Chat.  See
-[RFC-sessbridge-channel-protocol-v1.md](https://github.com/larsonzh/sessbridge/blob/main/docs/RFC-sessbridge-channel-protocol-v1.md).
-(Repo: https://github.com/larsonzh/sessbridge )
-
-- New channel: `%TEMP%\sessbridge` (override `SESSBRIDGE_CHANNEL_DIR`) —
-  `cmd_<pid>.json` / `res_<pid>.json` / `diag_<pid>.json`.
-- Legacy channel (whois compat): `%TEMP%\vscode_chat_send_cmd_<pid>.json` etc.
-- Modes: `visible` (chat panel), `silent` (vscode.lm), `auto`.
-- Multi-instance routing: only handles `cmd_<pid>` where `pid == process.ppid`.
-- S0 capability probe: writes `diag_<pid>.json` + `diag_<pid>-lm.json` on activate.
-- Chat tool adapter: default `copilot` (switch via `SESSBRIDGE_CHAT_TOOL`);
-  new tools plug in through `TOOL_ADAPTERS` — client and protocol unchanged.
-
-Install: `powershell -File installer\install.ps1 -Force` from repo root.
-
-> For now, get the VSIX extension and client scripts from the GitHub repo: https://github.com/larsonzh/sessbridge

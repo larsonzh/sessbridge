@@ -2,7 +2,7 @@
 # SessionBridge shell client (Linux / macOS / other POSIX systems).
 # Pure POSIX tooling — no Python / Node / jq required.
 # Independent implementation of the channel protocol v1 with the same
-# contract as client/sessbridge.py and client/ps/Send-IpcChatMessage.ps1.
+# contract as client/sessbridge.py and client/ps/sessbridge.ps1.
 #
 # Exit codes: 0 = success, 1 = local transport failure, 2 = extension-side
 # failure, 3 = validation / environment error.

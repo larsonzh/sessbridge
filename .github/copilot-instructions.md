@@ -12,7 +12,8 @@
 ## 结构速览
 - `extension/extension.js`：VS Code 扩展（JS 无构建）。轮询通道目录；新协议 `cmd_<pid>.json`/`res_<pid>.json`/`diag_<pid>.json`；旧协议 whois 文件名（始终 `%TEMP%`）。
 - `client/sessbridge.py`：Python 3 CLI（仅 stdlib）`send|wait|reply|discover`，退出码 0/1/2/3。
-- `client/ps/Send-IpcChatMessage.ps1`：PowerShell 兼容层，与 Python 同一契约（禁止漂移）。
+- `client/ps/sessbridge.ps1`：PowerShell 兼容层，与 Python 同一契约（禁止漂移）。
+- `client/sh/sessbridge.sh`：POSIX sh 客户端（Linux/macOS；无 Python/Node 依赖，同一契约）。
 - `installer/`：`install.ps1` / `uninstall.ps1` / `uninstall-legacy.ps1`。
 - `tests/`：`golden/*.json` 黄金样例 + `test_contract.py` 契约测试（mock 扩展）。
 - `tools/enforce_encoding.py`：编码/行尾门禁。

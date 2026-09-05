@@ -1,5 +1,7 @@
 ﻿# SessionBridge 编码与工程规范（Coding Conventions）
 
+> English: [CODING_CONVENTIONS_EN.md](CODING_CONVENTIONS_EN.md)
+
 > 状态：2026-09-04 定稿。适用：本仓库所有提交文件的创建与维护；
 > 与本规范冲突的旧文件按本规范迁移（一次性 `--fix` 即可）。
 
@@ -46,7 +48,8 @@ python tools\enforce_encoding.py --fix
 extension/        VS Code 扩展（JS，无构建步骤；package.json 无 BOM）
 client/
   sessbridge.py   Python CLI（send/wait/reply/discover，仅 stdlib）
-  ps/              PowerShell 兼容层（Send-IpcChatMessage.ps1）
+  sessbridge.sh   POSIX sh 客户端（Linux/macOS；无 Python/Node 依赖）
+  ps/sessbridge.ps1   PowerShell 兼容层（Windows；与 Python 同一契约）
 installer/        安装/卸载脚本
 tests/            黄金样例 + 契约测试（python tests\test_contract.py）
 tools/            工程工具（enforce_encoding.py 等）
@@ -98,4 +101,6 @@ docs/             协议/RFC/指南/排障/能力矩阵
 
 - 根 `README.md`：快速开始与定位；`docs/SESSBRIDGE_README.md`：完整指南；
   `docs/SESSBRIDGE_TROUBLESHOOTING_CN.md`：快速排障清单。
+- 英文版：`docs/SESSBRIDGE_README_EN.md`、`docs/SESSBRIDGE_TROUBLESHOOTING_EN.md`、
+  `docs/CODING_CONVENTIONS_EN.md`，以及 DEV_PLAN / S0 spike / capability-matrix 的 `_EN` 版本。
 - 能力矩阵（`docs/capability-matrix.md`）在 S0 探针后填写；`docs/DEV_PLAN.md` 跟踪里程碑。

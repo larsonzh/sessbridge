@@ -60,4 +60,4 @@ foreach ($item in Get-ChildItem -LiteralPath $srcDir -File) {
 Write-Output "SessionBridge extension installed to $extDir"
 Write-Output "Please reload the VS Code window (Ctrl+Shift+P -> Developer: Reload Window) to activate."
 Write-Output "Then use: .\client\sessbridge.py send --message 'hello'"
-Write-Output "   or:   powershell -File client\ps\Send-IpcChatMessage.ps1 -Message 'hello'"
+Write-Output "   or:   powershell -File client\ps\sessbridge.ps1 -Message 'hello'"

@@ -1,5 +1,7 @@
 ﻿# RFC：SessionBridge 通道协议 v1 / SessionBridge Channel Protocol v1
 
+> English：[RFC-sessbridge-channel-protocol-v1_EN.md](RFC-sessbridge-channel-protocol-v1_EN.md)
+
 > 状态：Draft（草案，v1.0.0，2026-09-04）。本文定义 SessionBridge 的通道协议 I 版：VS Code
 > Copilot Chat 与外部自动化之间**会话级双向**交互的本地文件/IPC 契约。
 >
@@ -208,7 +210,7 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
 - **主实现：Python 3**（stdlib 为主）：`sessbridge send|wait|reply|discover`；
   行为在 Windows/Linux/macOS 一致；whois 既有 `ipc_chat_sender.py` 的契约（错误码、发现模式、
   requestId 生成、结果绑定）1:1 继承。
-- **兼容层：PowerShell**（`Send-IpcChatMessage.ps1` 迁移/薄封装）：Windows 无缝接入，
+- **兼容层：PowerShell**（`sessbridge.ps1`，由 whois `Send-IpcChatMessage.ps1` 迁移/薄封装）：Windows 无缝接入，
   供 whois 现有调用脚本逐步切换；与 Python 实现通过同一契约测试锁定，禁止漂移。
 - Go 单二进制 CLI 列为后续可选（M3+），引入前必须先通过契约等价测试。
 - 双实现防漂移：黄金样例（命令/回执/错误码/多实例/优先级/超时）由契约测试统一驱动。

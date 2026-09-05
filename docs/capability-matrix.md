@@ -1,5 +1,7 @@
 ﻿# SessionBridge 能力矩阵（Capability Matrix）
 
+> English: [capability-matrix_EN.md](capability-matrix_EN.md)
+
 > 状态：**S0 已完成**（2026-09-04，探针 `diag_28012.json` / `diag_28012-lm.json`；扩展 0.1.0）。
 
 ## 1. 环境

@@ -104,7 +104,17 @@ sessbridge/
   verified; CI includes pip install smoke)
 - [x] S0 capability probe run + capability matrix filled (verified on real VS Code 1.136.1)
 - [x] Real VS Code runtime smoke (Extension Host activation + PID file IPC; separate CI job)
-- [ ] whois legacy client compat regression (requires real VS Code environment)
-- [ ] M2 session turns (pending S0 conclusions)
-- [ ] M3 official release (vsix + client package + SHA256 + compatibility matrix + CI
-  badges; after S0/M2)
+- [x] whois legacy client compat regression (2026-09-05 on real VS Code; visible delivery
+  via legacy protocol; both PASS):
+  - Python: whois `ipc_chat_sender.py` → receipt `success:true / sent_via_clipboard_fallback`;
+    `request_id` (`auto-<uuid>`) and `priority:high` passed through unchanged
+    (`vscode_chat_send_res_14948.json`)
+  - PowerShell: whois `Send-IpcChatMessage.ps1` → `-JsonOutput` real run
+    `success:true / sent_via_clipboard_fallback`, `request_id:auto-cef052cae36546e68da093875a019cfe`
+    (`request_id_auto_generated:true`), `priority:normal` (no `-KeepTempFiles`; receipt removed
+    after read per client convention)
+  - Isolation: legacy `vscode-chat-sender` uninstalled and VS Code restarted;
+    receipt attribution is unambiguous
+- [x] M2 session turns (after S0 conclusions: §5.1 silent multi-turn + §5.2
+  `@sbr-review` human reply, both end-to-end PASS)
+- [ ] M3 official release (vsix + client package + SHA256 + compatibility matrix + CI badges)

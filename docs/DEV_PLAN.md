@@ -94,6 +94,13 @@ sessbridge/
 - [x] Python 客户端包（`pyproject.toml` → `sessbridge` 命令；wheel 构建验证通过；CI 含 pip 安装冒烟）
 - [x] S0 能力探针运行 + 能力矩阵填写（真实 VS Code 1.136.1 已验证）
 - [x] 真实 VS Code runtime smoke（Extension Host 激活 + PID 文件 IPC；CI 独立 job）
-- [ ] whois 旧客户端兼容回归（需真实 VS Code 环境）
-- [ ] M2 会话回合（待 S0 结论）
-- [ ] M3 正式发布（vsix + 客户端包 + SHA256 + 兼容矩阵 + CI 徽章；需 S0/M2 后）
+- [x] whois 旧客户端兼容回归（2026-09-05 真实 VS Code，旧协议 visible 投递均 PASS）：
+  - Python：whois `ipc_chat_sender.py` → 回执 `success:true / sent_via_clipboard_fallback`，
+    `request_id`（`auto-<uuid>`）、`priority:high` 透传不变（`vscode_chat_send_res_14948.json`）
+  - PowerShell：whois `Send-IpcChatMessage.ps1` → `-JsonOutput` 实测 `success:true /
+    sent_via_clipboard_fallback`，`request_id:auto-cef052cae36546e68da093875a019cfe`
+    （`request_id_auto_generated:true`）、`priority:normal`（无 `-KeepTempFiles`，回执已按客户端
+    约定读取后清理）
+  - 隔离：旧 `vscode-chat-sender` 已卸载并重启 VS Code，回执归因无歧义
+- [x] M2 会话回合（S0 结论后：§5.1 silent 多轮 + §5.2 `@sbr-review` 人工回复，端到端均 PASS）
+- [ ] M3 正式发布（vsix + 客户端包 + SHA256 + 兼容矩阵 + CI 徽章）

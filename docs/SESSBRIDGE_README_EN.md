@@ -236,6 +236,27 @@ python client\sessbridge.py send --message "Start a new phase" --mode silent `
   preserves "head (anchor) + tail", is recorded and archived (never silent);
 - A new `--conversation-id` starts a completely fresh session (cheapest "reset").
 
+### Human reply (visible two-way, RFC §5.2)
+
+Human review/confirmation: in the chat panel use **`@sbr-review`** (the `@` list-item
+name; after selecting it becomes a participant token).
+
+```text
+@ sbr-review  prfrail-review-1  approved
+```
+
+- Format: `@sbr-review <conversationId> <reply text>`; the extension fails closed
+  (missing conversation id / empty reply shows a panel hint);
+- On success the panel confirms "已记录人工回复 → reply_<conversationId>.json";
+- Callers read it with `wait --conversation-id <cid>` → `humanReply` (consumed by
+  default; `--keep` retains), closing the "deliver → human review → receipt" loop.
+
+```powershell
+# After a human types @sbr-review prfrail-review-1 approved in the panel:
+python client\sessbridge.py wait --conversation-id prfrail-review-1 --json-output
+# => humanReply: "approved"
+```
+
 ### PowerShell (compat layer, Windows)
 
 The parameter set is a **superset of whois' `Send-IpcChatMessage.ps1`** (all whois

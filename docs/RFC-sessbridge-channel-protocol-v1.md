@@ -268,10 +268,12 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
   VS Code/Copilot 版本**不存在**，无法全量静默捕获面板回复；因此 `visible` 双向的人工回复
   采用**受控 participant 通道**（S0 已验证 `vscode.chat.createChatParticipant` ✅）。
   未来若宿主 API 提供全量捕获能力，再评估升级（不退化为 GUI 自动化）。
-- **参与方**：扩展注册 Chat Participant `sessbridge.review`
-  （`vscode.chat.createChatParticipant`，经聊天工具适配器接缝），提示语说明触发格式。
+- **参与方**：扩展注册 Chat Participant（id `larsonzh.sessbridge.review`，经
+  `contributes.chatParticipants` 声明 + `vscode.chat.createChatParticipant` 绑定 handler；
+  @ 提及名为 **`sbr-review`**（即列表项名，`fullName`「SessionBridge Review」为回复标签），
+  经聊天工具适配器接缝）。
 - **触发**：人工在聊天面板输入
-  `@sessbridge.review <conversationId> <回复内容>`；handler 解析 `conversationId` 并校验
+  `@sbr-review <conversationId> <回复内容>`；handler 解析 `conversationId` 并校验
   该会话存在/活跃（fail-close：未提供或无效时在面板给出明确错误提示，不做猜测关联）。
 - **回复文件**：通道目录内 `reply_<conversationId>.json`（运行时文件：UTF-8 无 BOM + LF，
   原子写（临时文件 + rename）；与 `cmd_/res_/diag_/history_` 同目录同约定）：
@@ -294,7 +296,7 @@ VS Code Copilot Chat（会话、上下文、人工审核/确认）
   面板侧回复不重复投递到 `res_<pid>.json` 单槽，避免与并发回执竞争。
 - **边界**：仅 `visible` 双向回合产生；silent 无人工参与。内容仍执行“调用方约定”安全策略
   （扩展不做脱敏，原样透传）。
-- **验收**：人工面板输入 `@sessbridge.review <cid> <回复>` → `reply_<cid>.json` 出现 →
+- **验收**：人工面板输入 `@sbr-review <cid> <回复>` → `reply_<cid>.json` 出现 →
   客户端 `wait --conversation-id <cid>` 拿到 `humanReply` 非空 → 人工审核/确认端到端 PASS。
 
 ## 6. 旧协议兼容模式

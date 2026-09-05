@@ -49,6 +49,12 @@
 - 磁盘持久化：`history_s0-smoke-001.json` 结构正确（`schemaVersion=1`，messages 含 `role/requestId/turnId/createdAt`）；reset 后文件回到 `turnId=1 / 2 条消息`。
 - **结论：§5.1 静默会话历史端到端实测 ✅ PASS**（多轮上下文、健康度回显、显式重置均符合 RFC 与黄金样例）。
 
+**§5.2 人工回复受控通道端到端实测（2026-09-05，VS Code 1.136.1，扩展 0.1.0）**：
+- 面板 `@sbr-review prfrail-review-1 同意`（列表项名 `sbr-review`，回复标签“SessionBridge Review”）
+  → 扩展写入 `reply_prfrail-review-1.json`（`humanReply:"同意"`、`turnId:1`、无 BOM）；
+- `wait --conversation-id prfrail-review-1 --json-output` → `humanReply:"同意"`，默认读后删；
+- **结论：§5.2 人工回复受控通道端到端实测 ✅ PASS**（面板输入→回复文件→wait 回执 闭环）。
+
 ## 4. 降级路线（已确认）
 
 - 保持“投递 + 轮询回执”单向语义（M1 现状）：`visible` 投递后即时回执，`humanReply` 留空。

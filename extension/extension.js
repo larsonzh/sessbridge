@@ -81,9 +81,11 @@ const TOOL_ADAPTERS = {
       if (typeof vscode.chat !== 'undefined' &&
           typeof vscode.chat.createChatParticipant === 'function') {
         try {
-          // Namespaced participant id; triggered in the panel as
-          // `@sessbridge.review <conversationId> <reply>` (RFC §5.2).
-          return vscode.chat.createChatParticipant('sessbridge.review', handler);
+          // Participant ids follow the `<extensionId>.<name>` convention;
+          // the prefix must match this extension's id (larsonzh.sessbridge),
+          // otherwise createChatParticipant rejects the id.  Triggered in
+          // the panel as `@larsonzh.sessbridge.review <conversationId> <reply>`.
+          return vscode.chat.createChatParticipant('larsonzh.sessbridge.review', handler);
         } catch (_) { return null; }
       }
       return null;
@@ -112,6 +114,7 @@ function ensureDir(dir) {
 function newCmdFile(pid) { return path.join(channelDir, 'cmd_' + pid + '.json'); }
 function newResFile(pid) { return path.join(channelDir, 'res_' + pid + '.json'); }
 function newDiagFile(pid) { return path.join(channelDir, 'diag_' + pid + '.json'); }
+function newReviewDiagFile(pid) { return path.join(channelDir, 'diag_' + pid + '-review.json'); }
 
 // Legacy paths are ALWAYS in the OS temp dir (whois compatibility).
 function legacyCmdForPid(pid) { return path.join(os.tmpdir(), 'vscode_chat_send_cmd_' + pid + '.json'); }
@@ -319,7 +322,7 @@ function deleteHistory(cid) {
 function writeHumanReply(cid, replyText) {
   const cidRaw = String(cid || '').trim();
   if (!cidRaw) {
-    throw new Error('missing conversationId — usage: @sessbridge.review <conversationId> <reply>');
+    throw new Error('missing conversationId — usage: @sbr-review <conversationId> <reply>');
   }
   let hist = null;
   try { hist = loadHistory(cidRaw); } catch (_) {}
@@ -349,7 +352,7 @@ async function handleReviewPrompt(request, _context, stream, _token) {
   };
   const m = prompt.match(/^(\S+)\s+([\s\S]*)$/);
   if (!m) {
-    respond('用法：@sessbridge.review <conversationId> <回复内容>（缺少会话 ID，未写入回复）');
+    respond('用法：@sbr-review <conversationId> <回复内容>（缺少会话 ID，未写入回复）');
     return;
   }
   const cid = m[1].trim();
@@ -1026,12 +1029,22 @@ function activate(context) {
   probeChatApi();
 
   // RFC §5.2: controlled human-reply channel via chat participant.
+  let reviewReg = { reason: 'review_participant', pid: MY_WINDOW_PID,
+    at: new Date().toISOString(), extensionVersion: EXTENSION_VERSION,
+    registered: false, detail: 'not attempted' };
   try {
     const participant = ADAPTER.registerReviewParticipant(handleReviewPrompt);
     if (participant) {
+      reviewReg.registered = true;
+      reviewReg.detail = 'registered id=' + participant.id;
       context.subscriptions.push(participant);
+    } else {
+      reviewReg.detail = 'createChatParticipant unavailable or returned null';
     }
-  } catch (_) {}
+  } catch (err) {
+    reviewReg.detail = String(err);
+  }
+  try { writeResult(newReviewDiagFile(MY_WINDOW_PID), reviewReg); } catch (_) {}
 
   tryProcessCommand();
   pollTimer = setInterval(tryProcessCommand, POLL_MS);

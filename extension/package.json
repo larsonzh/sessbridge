@@ -9,12 +9,26 @@
   "engines": {
     "vscode": "^1.82.0"
   },
+  "enabledApiProposals": [
+    "chatParticipantAdditions"
+  ],
   "categories": [
     "Other"
   ],
   "activationEvents": [
     "onStartupFinished"
   ],
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "larsonzh.sessbridge.review",
+        "fullName": "SessionBridge Review",
+        "name": "sbr-review",
+        "description": "Record a human reply (conversationId + reply text) into the SessionBridge channel (RFC §5.2).",
+        "isSticky": false
+      }
+    ]
+  },
   "main": "./extension.js",
   "repository": {
     "type": "git",

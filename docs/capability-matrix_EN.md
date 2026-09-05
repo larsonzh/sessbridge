@@ -71,6 +71,16 @@
 - **Conclusion: §5.1 silent conversation history end-to-end ✅ PASS** (multi-turn
   context, health-metric echo, and explicit reset all match the RFC and golden samples).
 
+**§5.2 Controlled human-reply channel end-to-end test (2026-09-05, VS Code 1.136.1,
+  extension 0.1.0)**:
+- Panel `@sbr-review prfrail-review-1 approved` (list-item name `sbr-review`;
+  response label "SessionBridge Review") → extension wrote
+  `reply_prfrail-review-1.json` (`humanReply:"approved"`, `turnId:1`, no BOM);
+- `wait --conversation-id prfrail-review-1 --json-output` → `humanReply:"approved"`,
+  consumed by default;
+- **Conclusion: §5.2 controlled human-reply channel end-to-end ✅ PASS**
+  (panel input → reply file → wait receipt loop).
+
 ## 4. Degradation route (confirmed)
 
 - Keep the "delivery + poll receipt" one-way semantics (M1 status quo): `visible`

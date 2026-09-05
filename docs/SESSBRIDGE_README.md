@@ -226,6 +226,25 @@ python client\sessbridge.py send --message "开始新阶段" --mode silent `
 - 历史默认保留 20 轮 / ~24K token / 单文件 ≤1MB，剔除保“头(锚点)+尾”、留痕并归档；
 - 换 `--conversation-id` 即开全新会话（成本最低的“重置”）。
 
+### 人工回复（visible 双向，RFC §5.2）
+
+人工审核/确认：在聊天面板用 **`@sbr-review`**（@ 列表项名；选中后显示为 participant）。
+
+```text
+@ sbr-review  prfrail-review-1  同意
+```
+
+- 格式：`@sbr-review <conversationId> <回复内容>`；扩展 fail-close（缺会话 ID/空回复会在面板提示）；
+- 成功后面板提示“已记录人工回复 → reply_<conversationId>.json”；
+- 调用方用 `wait --conversation-id <cid>` 拿到 `humanReply`（默认读后删，`--keep` 保留），
+  完成“投递 → 人工审核 → 回执”闭环。
+
+```powershell
+# 人工在面板 @sbr-review prfrail-review-1 同意 之后：
+python client\sessbridge.py wait --conversation-id prfrail-review-1 --json-output
+# => humanReply: "同意"
+```
+
 ### PowerShell（兼容层，Windows）
 
 参数集为 whois `Send-IpcChatMessage.ps1` 的**全集超集**（whois 参数全部保留，并新增

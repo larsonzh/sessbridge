@@ -326,10 +326,12 @@ Field contract:
   replies therefore use a **controlled participant channel** (S0 verified
   `vscode.chat.createChatParticipant` ✅). Re-assess an upgrade if the host API gains
   full capture later (never degrade to GUI automation).
-- **Participant**: the extension registers a Chat Participant `sessbridge.review`
-  (`vscode.chat.createChatParticipant`, via the chat-tool-adapter seam), with
-  instructions describing the trigger format.
-- **Trigger**: a human types `@sessbridge.review <conversationId> <reply text>` in the
+- **Participant**: the extension registers a Chat Participant (id
+  `larsonzh.sessbridge.review`, declared via `contributes.chatParticipants` and
+  bound via `vscode.chat.createChatParticipant`; the `@` mention name is
+  **`sbr-review`** (the list-item name; `fullName` "SessionBridge Review" is the
+  response label); via the chat-tool-adapter seam).
+- **Trigger**: a human types `@sbr-review <conversationId> <reply text>` in the
   chat panel; the handler parses `conversationId` and validates that the session
   exists/is active (fail-close: an explicit error is shown in the panel when missing
   or invalid — no guessing).
@@ -358,7 +360,7 @@ Field contract:
 - **Boundary**: produced only by `visible` two-way turns; silent has no human
   participation. Content follows the caller-convention security policy (no redaction,
   verbatim pass-through).
-- **Acceptance**: human types `@sessbridge.review <cid> <reply>` in the panel →
+- **Acceptance**: human types `@sbr-review <cid> <reply>` in the panel →
   `reply_<cid>.json` appears → client `wait --conversation-id <cid>` receives a non-empty
   `humanReply` → human review/confirmation end-to-end PASS.
 
